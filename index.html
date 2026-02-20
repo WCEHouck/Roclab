@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mountain Project Route Explorer</title>
+    <title>Roclab – Rock Climb Finder</title>
     <script src='https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js'></script>
     <link href='https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css' rel='stylesheet' />
     <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -145,8 +145,8 @@
 
   <div id="sidebar">
     <div class="header">
-      <h1>Route Explorer</h1>
-      <div class="subtitle">Mountain Project Visualization</div>
+      <h1>Roclab</h1>
+      <div class="subtitle">Rock Climb Finder</div>
     </div>
 
     <!-- Global Route Search -->
@@ -175,7 +175,7 @@
         <select id="aggregationLevel">
           <option value="route">Individual Routes</option>
           <option value="proximity">Proximity (Miles)</option>
-          <option value="Location_Short">Location Short</option>
+          <option value="Location_Short" selected>Wall</option>
           <option value="Subregion_1">Subregion 1</option>
           <option value="Subregion_2">Subregion 2</option>
           <option value="Subregion_3">Subregion 3</option>
@@ -197,11 +197,11 @@
       <div class="filter-group" id="scaleMethodGroup">
         <label class="filter-label">Size Scale Method</label>
         <select id="scaleMethod">
-          <option value="area" selected>Equal Area (perceptual) ★</option>
+          <option value="area">Equal Area (perceptual) ★</option>
           <option value="sqrt">Square Root — moderate</option>
           <option value="log2">Logarithmic — compressed</option>
           <option value="cbrt">Cube Root — subtle</option>
-          <option value="linear">Linear — max contrast</option>
+          <option value="linear" selected>Linear — max contrast</option>
           <option value="fixed">Fixed Size</option>
         </select>
       </div>
@@ -211,21 +211,19 @@
       <div class="section-title">Map Style</div>
       <select id="mapStyle" style="margin-bottom:8px">
         <option value="mapbox://styles/mapbox/outdoors-v12">Outdoors</option>
-        <option value="mapbox://styles/mapbox/satellite-streets-v12">Satellite + Streets</option>
+        <option value="mapbox://styles/mapbox/satellite-streets-v12" selected>Satellite + Streets</option>
         <option value="mapbox://styles/mapbox/satellite-v9">Satellite</option>
         <option value="mapbox://styles/mapbox/dark-v11">Dark</option>
         <option value="mapbox://styles/mapbox/light-v11">Light</option>
         <option value="mapbox://styles/mapbox/streets-v12">Streets</option>
       </select>
-      
-      <div class="chk-item">
-        <input type="checkbox" id="toggleHeatmap">
-        <label for="toggleHeatmap">Enable Density Heatmap</label>
-      </div>
     </div>
 
     <div class="section" style="--i:3">
-      <div class="section-title">State / Region</div>
+      <div class="section-title" style="justify-content:space-between">
+        <span style="display:flex;align-items:center;gap:7px"><span style="content:'';width:3px;height:13px;background:var(--accent);border-radius:2px;display:inline-block"></span>State / Region</span>
+        <button class="btn sm" id="clearStates">Clear</button>
+      </div>
       <select id="stateFilter" multiple></select>
     </div>
 
@@ -248,10 +246,10 @@
     </div>
 
     <div class="section" style="--i:5">
-      <div class="section-title">Rating</div>
+      <div class="section-title">Grade</div>
       <div class="range-inputs">
-        <input type="text" id="ratingMin" placeholder="Min (5.9, WI3…)">
-        <input type="text" id="ratingMax" placeholder="Max (5.12, WI6…)">
+        <input type="text" id="ratingMin" placeholder="Min (5.9, V3, WI3…)">
+        <input type="text" id="ratingMax" placeholder="Max (5.12, V6, WI6…)">
       </div>
     </div>
 
@@ -282,7 +280,7 @@
     <div class="section" style="--i:9">
       <div class="section-title">Color By</div>
       <select id="vizMode">
-        <option value="rating">Rating</option>
+        <option value="rating">Grade</option>
         <option value="length">Length</option>
         <option value="pitches">Pitches</option>
         <option value="stars">Stars</option>
@@ -340,6 +338,16 @@
           <label style="font-size:10px;color:var(--earth-light);white-space:nowrap;font-family:'DM Mono',monospace;margin-left:8px">Min Pitches</label>
           <input type="number" id="pMinPitches" min="0" placeholder="0" style="width:60px;flex:none">
         </div>
+      </div>
+      <div id="panelStats" style="display:none;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;font-family:'DM Mono',monospace;font-size:10px;">
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px">
+          <span>Median Grade: <b id="psMedianGrade" style="color:var(--accent)">—</b></span>
+          <span>Trad: <b id="psTrad" style="color:#5ddb8d">—</b></span>
+          <span>Sport: <b id="psSport" style="color:#7ec8f0">—</b></span>
+          <span>Top Rope: <b id="psTR" style="color:#f08080">—</b></span>
+          <span>Boulder: <b id="psBoulder" style="color:#f39c12">—</b></span>
+        </div>
+        <div style="height:90px;position:relative"><canvas id="panelGradeChart"></canvas></div>
       </div>
       <div class="panel-count" id="panelCount"></div>
       <div id="panelRouteList">
@@ -566,11 +574,17 @@ function doFilter(params) {
 }
 
 function calcGradeDistribution(routes) {
-    var counts = { '≤5.7':0, '5.8':0, '5.9':0, '5.10':0, '5.11':0, '5.12':0, '5.13+':0, 'Boulder':0 };
+    var counts = { '≤5.7':0, '5.8':0, '5.9':0, '5.10':0, '5.11':0, '5.12':0, '5.13+':0, 'V0-2':0, 'V3-5':0, 'V6-8':0, 'V9+':0 };
     for(var i=0; i<routes.length; i++) {
         var g = routes[i]._grade;
         if (g < 0) continue;
-        if (g >= 100) counts['Boulder']++;
+        if (g >= 100) {
+            var v = g - 100;
+            if (v <= 2) counts['V0-2']++;
+            else if (v <= 5) counts['V3-5']++;
+            else if (v <= 8) counts['V6-8']++;
+            else counts['V9+']++;
+        }
         else if (g < 8)  counts['≤5.7']++;
         else if (g < 9)  counts['5.8']++;
         else if (g < 10) counts['5.9']++;
@@ -579,13 +593,19 @@ function calcGradeDistribution(routes) {
         else if (g < 13) counts['5.12']++;
         else counts['5.13+']++;
     }
-    return counts;
+    // Remove empty boulder buckets if no boulders, and vice versa
+    var hasRoped = counts['≤5.7']||counts['5.8']||counts['5.9']||counts['5.10']||counts['5.11']||counts['5.12']||counts['5.13+'];
+    var hasBould = counts['V0-2']||counts['V3-5']||counts['V6-8']||counts['V9+'];
+    var out = {};
+    if (hasRoped) { ['≤5.7','5.8','5.9','5.10','5.11','5.12','5.13+'].forEach(k=>{ out[k]=counts[k]; }); }
+    if (hasBould) { ['V0-2','V3-5','V6-8','V9+'].forEach(k=>{ out[k]=counts[k]; }); }
+    return out;
 }
 
 // ─── Aggregation helpers ──────────────────────────────────────────
 function makeAgg(routes, name, lat, lon) {
   var id     = 'c' + (++clusterSeq);
-  var grades = routes.map(function(r){ return r._grade; }).filter(function(n){ return n > -1 && n < 100; });
+  var grades = routes.map(function(r){ return r._grade; }).filter(function(n){ return n > -1; });
   clusterStore[id] = routes;
   return {
     _isAgg: true, _cid: id, _name: name,
@@ -731,6 +751,7 @@ function buildAggFeatures(display, vizMode, scale, scaleMethod) {
       p.length  = r._length || '';
       p.pitches = r._pitches || '';
       p.location= r.Location || '';
+      p.locshort= r.Location_Short || '';
       p.url     = r.URL || '';
       p.radius  = 6;
     }
@@ -772,6 +793,7 @@ function buildRouteFeatures(routes, vizMode) {
         length:  r._length  || 0,
         pitches: r._pitches || 0,
         location:r.Location || '',
+        locshort:r.Location_Short || '',
         url:     r.URL      || ''
       }
     });
@@ -880,8 +902,9 @@ let vsScrollFn    = null;
 let pActiveType   = null;
 let typeState     = {};
 let gradeChart    = null;
+let panelGradeChart = null;
 
-ROUTE_TYPES.forEach(t => typeState[t.id] = null);
+ROUTE_TYPES.forEach(t => typeState[t.id] = 'can');
 
 worker.onmessage = ({data}) => {
   switch (data.type) {
@@ -914,25 +937,106 @@ function initChart() {
     const ctx = document.getElementById('gradeChart').getContext('2d');
     gradeChart = new Chart(ctx, {
         type: 'bar',
-        data: { labels: [], datasets: [{ label: 'Routes', data: [], backgroundColor: '#3498db', borderRadius: 3 }] },
+        data: { labels: [], datasets: [{ label: 'Routes', data: [], backgroundColor: [], borderRadius: 3 }] },
         options: {
             responsive: true, maintainAspectRatio: false,
             scales: {
-                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:9} } },
+                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:9}, precision:0 } },
                 x: { grid: { display: false }, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:9} } }
             },
-            plugins: { legend: { display: false }, tooltip: {titleFont:{family:"'Chakra Petch'"}, bodyFont:{family:"'DM Mono'"}} }
+            plugins: { legend: { display: false }, tooltip: {
+                titleFont:{family:"'Chakra Petch'"}, bodyFont:{family:"'DM Mono'"},
+                callbacks: { label: ctx => ` ${ctx.parsed.y.toLocaleString()} routes` }
+            }}
         }
     });
 }
+
+function initPanelChart() {
+    const canvas = document.getElementById('panelGradeChart');
+    if (!canvas) return;
+    panelGradeChart = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'Routes', data: [], backgroundColor: [], borderRadius: 3 }] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:8}, precision:0 } },
+                x: { grid: { display: false }, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:8} } }
+            },
+            plugins: { legend: { display: false }, tooltip: {
+                titleFont:{family:"'Chakra Petch'"}, bodyFont:{family:"'DM Mono'"},
+                callbacks: { label: ctx => ` ${ctx.parsed.y.toLocaleString()}` }
+            }}
+        }
+    });
+}
+
+function gradeLabel(g) {
+    if (g < 0) return '—';
+    if (g >= 100) return `V${g - 100}`;
+    return `5.${Math.floor(g)}`;
+}
+
+function updatePanelStats(routes) {
+    // Compute type counts
+    let trad=0, sport=0, tr=0, boulder=0;
+    const gradeDist = {};
+    const grades = [];
+    for (const r of routes) {
+        const tl = (r['Route Type']||r.rtype||'').toLowerCase();
+        if (tl.includes('trad')) trad++;
+        if (tl.includes('sport')) sport++;
+        if (tl.includes('tr') || tl.includes('top rope')) tr++;
+        if (tl.includes('boulder')) boulder++;
+        const g = typeof r._grade === 'number' ? r._grade : -1;
+        if (g >= 0) grades.push(g);
+    }
+    // Median grade
+    const sorted = grades.slice().sort((a,b)=>a-b);
+    const h = sorted.length >> 1;
+    const med = sorted.length ? (sorted.length%2 ? sorted[h] : (sorted[h-1]+sorted[h])/2) : -1;
+    document.getElementById('psMedianGrade').textContent = gradeLabel(med);
+    document.getElementById('psTrad').textContent = trad.toLocaleString();
+    document.getElementById('psSport').textContent = sport.toLocaleString();
+    document.getElementById('psTR').textContent = tr.toLocaleString();
+    document.getElementById('psBoulder').textContent = boulder.toLocaleString();
+
+    // Grade distribution for panel chart
+    const bins = {'≤5.7':0,'5.8':0,'5.9':0,'5.10':0,'5.11':0,'5.12':0,'5.13+':0,'V0-2':0,'V3-5':0,'V6-8':0,'V9+':0};
+    for (const g of grades) {
+        if (g >= 100) { const v=g-100; if(v<=2)bins['V0-2']++; else if(v<=5)bins['V3-5']++; else if(v<=8)bins['V6-8']++; else bins['V9+']++; }
+        else if(g<8)bins['≤5.7']++; else if(g<9)bins['5.8']++; else if(g<10)bins['5.9']++;
+        else if(g<11)bins['5.10']++; else if(g<12)bins['5.11']++; else if(g<13)bins['5.12']++; else bins['5.13+']++;
+    }
+    const hasRoped = ['≤5.7','5.8','5.9','5.10','5.11','5.12','5.13+'].some(k=>bins[k]>0);
+    const hasBould = ['V0-2','V3-5','V6-8','V9+'].some(k=>bins[k]>0);
+    const labels = [...(hasRoped?['≤5.7','5.8','5.9','5.10','5.11','5.12','5.13+']:[]), ...(hasBould?['V0-2','V3-5','V6-8','V9+']:[])];
+    const vals = labels.map(l=>bins[l]);
+    const colors = labels.map(l=>GRADE_COLORS[l]||'#3498db');
+    if (!panelGradeChart) initPanelChart();
+    if (panelGradeChart) {
+        panelGradeChart.data.labels = labels;
+        panelGradeChart.data.datasets[0].data = vals;
+        panelGradeChart.data.datasets[0].backgroundColor = colors;
+        panelGradeChart.update();
+    }
+}
+
+const GRADE_COLORS = {
+    '≤5.7':'#27ae60','5.8':'#2ecc71','5.9':'#f1c40f','5.10':'#e67e22','5.11':'#e74c3c','5.12':'#8e44ad','5.13+':'#2c3e50',
+    'V0-2':'#3498db','V3-5':'#9b59b6','V6-8':'#e74c3c','V9+':'#2c3e50'
+};
 
 function onFilterResult(data) {
   document.getElementById('visibleRoutes').textContent = data.filteredCount.toLocaleString();
   document.getElementById('totalRoutes').textContent   = data.totalCount.toLocaleString();
 
   if (gradeChart && data.gradeCounts) {
-      gradeChart.data.labels = Object.keys(data.gradeCounts);
+      const labels = Object.keys(data.gradeCounts);
+      gradeChart.data.labels = labels;
       gradeChart.data.datasets[0].data = Object.values(data.gradeCounts);
+      gradeChart.data.datasets[0].backgroundColor = labels.map(l => GRADE_COLORS[l] || '#3498db');
       gradeChart.update();
   }
 
@@ -941,7 +1045,7 @@ function onFilterResult(data) {
 }
 
 function onRoutesResult(data) {
-  openPanel(data.routes, data.title, data.sub);
+  openPanel(data.routes, data.title, data.sub, true);
 }
 
 // ── Global Search Handling ──
@@ -984,7 +1088,6 @@ function onSearchResult(data) {
 
 function applyMapResult(data) {
   const isRoute = data.mode === 'route';
-  const showHeatmap = document.getElementById('toggleHeatmap').checked;
   const fc = {type:'FeatureCollection', features: data.features};
 
   // Toggle layer visibility
@@ -992,10 +1095,10 @@ function applyMapResult(data) {
   const aggLayers    = ['route-circles'];
   
   nativeLayers.forEach(id => {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', (isRoute && !showHeatmap) ? 'visible' : 'none');
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', isRoute ? 'visible' : 'none');
   });
   if (map.getLayer('routes-heatmap')) {
-    map.setLayoutProperty('routes-heatmap', 'visibility', (isRoute && showHeatmap) ? 'visible' : 'none');
+    map.setLayoutProperty('routes-heatmap', 'visibility', 'none');
   }
   aggLayers.forEach(id => {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', (!isRoute) ? 'visible' : 'none');
@@ -1023,7 +1126,7 @@ function applyMapResult(data) {
 function initMap() {
   map = new mapboxgl.Map({
     container: 'map',
-    style: document.getElementById('mapStyle').value || 'mapbox://styles/mapbox/outdoors-v12',
+    style: document.getElementById('mapStyle').value || 'mapbox://styles/mapbox/satellite-streets-v12',
     center: [-105, 42], zoom: 4
   });
   map.addControl(new mapboxgl.NavigationControl(), 'top-left');
@@ -1157,7 +1260,7 @@ function handleNativeClusterClick(e) {
         Location: p.location || '', URL: p.url || ''
       };
     });
-    openPanel(routes, 'Routes in Area', `${count.toLocaleString()} routes`);
+    openPanel(routes, 'Routes in Area', `${count.toLocaleString()} routes`, true);
   });
 }
 
@@ -1169,7 +1272,7 @@ function showPopup(coords, p) {
   const loc = (p.location || '').replace(/>/g,' › ');
   new mapboxgl.Popup().setLngLat(coords).setHTML(`
     <div class="popup-title">${esc(p.route || 'Unknown')}</div>
-    <div class="popup-detail"><span class="popup-label">Rating:</span><span class="popup-value">${p.rating||'—'}</span></div>
+    <div class="popup-detail"><span class="popup-label">Grade:</span><span class="popup-value">${p.rating||'—'}</span></div>
     <div class="popup-detail"><span class="popup-label">Type:</span><span class="popup-value">${p.rtype||'—'}</span></div>
     <div class="popup-detail"><span class="popup-label">Stars:</span><span class="popup-value">${p.stars||'—'}</span></div>
     <div class="popup-detail"><span class="popup-label">Length:</span><span class="popup-value">${p.length ? p.length+' ft' : '—'}</span></div>
@@ -1198,11 +1301,6 @@ function buildTypeUI() {
     row.querySelectorAll('.tbtn').forEach(btn => btn.addEventListener('click', () => {
       const tid = btn.dataset.id, m = btn.dataset.m;
       typeState[tid] = (typeState[tid] === m) ? null : m;
-      if (tid === 'Boulder' && (m==='must'||m==='can') && typeState[tid]===m) {
-        ROUTE_TYPES.forEach(t => { if (t.id!=='Boulder' && (typeState[t.id]==='must'||typeState[t.id]==='can')) typeState[t.id]=null; });
-      } else if (tid !== 'Boulder' && (m==='must'||m==='can') && typeState[tid]===m) {
-        if (typeState['Boulder']==='must'||typeState['Boulder']==='can') typeState['Boulder']=null;
-      }
       syncTypeUI();
       scheduleFilter();
     }));
@@ -1227,7 +1325,6 @@ function readURLState() {
         
         // Restore Inputs
         if(state.mapStyle) document.getElementById('mapStyle').value = state.mapStyle;
-        if(state.heatmap) document.getElementById('toggleHeatmap').checked = state.heatmap;
         if(state.aggregation) {
             document.getElementById('aggregationLevel').value = state.aggregation;
             document.getElementById('radiusGroup').style.display = state.aggregation === 'proximity' ? 'block' : 'none';
@@ -1257,7 +1354,7 @@ function readURLState() {
             }
 
             // Restore type state
-            ROUTE_TYPES.forEach(t => typeState[t.id] = null);
+            ROUTE_TYPES.forEach(t => typeState[t.id] = 'can');
             if(p.mustTypes) p.mustTypes.forEach(tid => { const found = ROUTE_TYPES.find(t=>t.id.toLowerCase()===tid); if(found) typeState[found.id] = 'must'; });
             if(p.canTypes) p.canTypes.forEach(tid => { const found = ROUTE_TYPES.find(t=>t.id.toLowerCase()===tid); if(found) typeState[found.id] = 'can'; });
             if(p.notTypes) p.notTypes.forEach(tid => { const found = ROUTE_TYPES.find(t=>t.id.toLowerCase()===tid); if(found) typeState[found.id] = 'not'; });
@@ -1299,8 +1396,7 @@ function sendFilter() {
   // URL State Feature Saving
   const fullState = {
       ...payload, 
-      mapStyle: document.getElementById('mapStyle').value,
-      heatmap: document.getElementById('toggleHeatmap').checked
+      mapStyle: document.getElementById('mapStyle').value
   };
   window.history.replaceState(null, '', '#' + encodeURIComponent(JSON.stringify(fullState)));
 
@@ -1323,8 +1419,8 @@ function resetFilters() {
   ['ratingMin','ratingMax','starsMin','starsMax','lengthMin','lengthMax','pitchesMin','pitchesMax'].forEach(id => document.getElementById(id).value = '');
   const sel = document.getElementById('stateFilter');
   for (let i = 0; i < sel.options.length; i++) sel.options[i].selected = false;
-  ROUTE_TYPES.forEach(t => typeState[t.id] = null); syncTypeUI();
-  document.getElementById('aggregationLevel').value = 'route';
+  ROUTE_TYPES.forEach(t => typeState[t.id] = 'can'); syncTypeUI();
+  document.getElementById('aggregationLevel').value = 'Location_Short';
   document.getElementById('radiusGroup').style.display = 'none';
   document.getElementById('scaleDots').checked = true;
   document.getElementById('scaleMethodGroup').style.display = 'block';
@@ -1332,13 +1428,23 @@ function resetFilters() {
   scheduleFilter();
 }
 
-function openPanel(routes, title, sub) {
+function openPanel(routes, title, sub, showStats) {
   document.getElementById('panelTitle').textContent = title;
   document.getElementById('panelSub').textContent   = sub;
   document.getElementById('pSearch').value    = '';
   document.getElementById('pMinStars').value  = '';
   document.getElementById('pMinPitches').value= '';
-  document.getElementById('pSort').value      = 'stars-desc';
+  // Remember sort — don't reset it
+
+  // Stats section
+  const statsEl = document.getElementById('panelStats');
+  if (showStats && routes.length > 0) {
+    statsEl.style.display = 'block';
+    updatePanelStats(routes);
+  } else {
+    statsEl.style.display = 'none';
+  }
+
   pActiveType = null;
 
   const typeSet = new Set();
@@ -1357,8 +1463,11 @@ function openPanel(routes, title, sub) {
     });
     chips.appendChild(b);
   });
-  vsRoutes = routes; refreshPanel();
+  vsRoutes = routes;
+  if (mapReady) highlightArea(routes);
   document.getElementById('routePanel').classList.add('open');
+  // Fix blank until scroll: use requestAnimationFrame to ensure panel is visible before rendering
+  requestAnimationFrame(() => { refreshPanel(); });
 }
 
 function refreshPanel() {
@@ -1393,18 +1502,19 @@ function renderVS(routes) {
   inner.style.height = `${routes.length * ITEM_H}px`;
   inner.innerHTML = '';
   const paint = () => {
-    const st = container.scrollTop, vh = container.clientHeight || 480;
+    const st = container.scrollTop, vh = container.clientHeight || container.offsetHeight || 480;
     const s = Math.max(0, Math.floor(st / ITEM_H) - 4), e = Math.min(routes.length - 1, Math.ceil((st + vh) / ITEM_H) + 4);
     inner.innerHTML = '';
     const frag = document.createDocumentFragment();
     for (let i = s; i <= e; i++) frag.appendChild(makeCard(routes[i], i));
     inner.appendChild(frag);
   };
-  paint();
   container.removeEventListener('scroll', vsScrollFn);
   vsScrollFn = paint;
   container.addEventListener('scroll', vsScrollFn, {passive:true});
   container.scrollTop = 0;
+  // Use rAF to ensure the container has proper dimensions before painting
+  requestAnimationFrame(paint);
 }
 
 function makeCard(r, idx) {
@@ -1413,15 +1523,44 @@ function makeCard(r, idx) {
   div.style.cssText = `top:${idx * ITEM_H}px;height:${ITEM_H}px`;
   const sn = r._stars || 0, ss = '★'.repeat(Math.round(sn)) + '☆'.repeat(Math.max(0, 4 - Math.round(sn))), grade = r.Rating || r.Rating_Clean || '—', len = r._length ? `${~~r._length}ft` : '', pit = r._pitches ? `${r._pitches}p` : '';
   const types = (r['Route Type']||'').split(',').map(t => t.trim()).filter(Boolean);
+  const wall = esc(r.Location_Short || r.locshort || '');
   div.innerHTML = `
     <div class="rc-name" title="${esc(r.Route||'')}">${esc(r.Route||'Unknown')}</div>
-    <div class="rc-meta"><span>${esc(grade)}</span><span class="rc-stars">${ss} ${sn.toFixed(1)}</span>${len ? `<span>${len}</span>` : ''}${pit ? `<span>${pit}</span>` : ''}</div>
+    <div class="rc-meta"><span>${esc(grade)}</span><span class="rc-stars">${ss} ${sn.toFixed(1)}</span>${len ? `<span>${len}</span>` : ''}${pit ? `<span>${pit}</span>` : ''}${wall ? `<span style="color:var(--topo-blue);font-size:9px">${wall}</span>` : ''}</div>
     <div class="rc-tags">${types.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>`;
   div.addEventListener('click', () => { if (r.URL) window.open(r.URL, '_blank'); });
+  div.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (r.URL) window.open(r.URL, '_blank');
+  });
   return div;
 }
 
-function closePanel() { document.getElementById('routePanel').classList.remove('open'); }
+function highlightArea(routes) {
+  // Remove existing highlight
+  if (map.getLayer('panel-highlight')) map.removeLayer('panel-highlight');
+  if (map.getSource('panel-highlight')) map.removeSource('panel-highlight');
+  if (!routes || !routes.length) return;
+  const lats = [], lons = [];
+  for (const r of routes) {
+    const la = parseFloat(r['Area Latitude'] || r.lat), lo = parseFloat(r['Area Longitude'] || r.lon);
+    if (!isNaN(la) && !isNaN(lo)) { lats.push(la); lons.push(lo); }
+  }
+  if (!lats.length) return;
+  const minLat=Math.min(...lats)-0.05, maxLat=Math.max(...lats)+0.05, minLon=Math.min(...lons)-0.05, maxLon=Math.max(...lons)+0.05;
+  map.addSource('panel-highlight', { type:'geojson', data:{ type:'Feature', geometry:{ type:'Polygon', coordinates:[[[minLon,minLat],[maxLon,minLat],[maxLon,maxLat],[minLon,maxLat],[minLon,minLat]]] } } });
+  map.addLayer({ id:'panel-highlight', type:'fill', source:'panel-highlight', paint:{ 'fill-color':'#f39c12', 'fill-opacity':0.12 } });
+  map.addLayer({ id:'panel-highlight-border', type:'line', source:'panel-highlight', paint:{ 'line-color':'#f39c12', 'line-width':2, 'line-opacity':0.7, 'line-dasharray':[4,2] } });
+}
+
+function closePanel() {
+  document.getElementById('routePanel').classList.remove('open');
+  if (map) {
+    if (map.getLayer('panel-highlight-border')) map.removeLayer('panel-highlight-border');
+    if (map.getLayer('panel-highlight')) map.removeLayer('panel-highlight');
+    if (map.getSource('panel-highlight')) map.removeSource('panel-highlight');
+  }
+}
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function fetchInitialData() {
@@ -1459,6 +1598,11 @@ function fetchInitialData() {
 const $ = id => document.getElementById(id);
 
 $('resetBtn').addEventListener('click', resetFilters);
+$('clearStates').addEventListener('click', () => {
+  const sel = document.getElementById('stateFilter');
+  for (let i = 0; i < sel.options.length; i++) sel.options[i].selected = false;
+  scheduleFilter();
+});
 $('clearTypes').addEventListener('click', () => { ROUTE_TYPES.forEach(t => typeState[t.id]=null); syncTypeUI(); scheduleFilter(); });
 
 $('aggregationLevel').addEventListener('change', e => { $('radiusGroup').style.display = e.target.value==='proximity' ? 'block' : 'none'; scheduleFilter(); });
@@ -1467,9 +1611,6 @@ $('scaleDots').addEventListener('change', e => { $('scaleMethodGroup').style.dis
 $('scaleMethod').addEventListener('change', scheduleFilter);
 $('stateFilter').addEventListener('change', scheduleFilter);
 $('vizMode').addEventListener('change', scheduleFilter);
-$('toggleHeatmap').addEventListener('change', () => {
-    scheduleFilter(); // Re-runs applyMapResult which toggles Heatmap vs Cluster visibility
-});
 
 ['ratingMin','ratingMax','starsMin','starsMax','lengthMin','lengthMax','pitchesMin','pitchesMax'].forEach(id => $(id).addEventListener('input', scheduleFilter));
 
