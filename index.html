@@ -217,11 +217,13 @@
         <option value="mapbox://styles/mapbox/light-v11">Light</option>
         <option value="mapbox://styles/mapbox/streets-v12">Streets</option>
       </select>
-      
     </div>
 
     <div class="section" style="--i:3">
-      <div class="section-title">State / Region <button class="btn sm" id="clearStates" style="margin-left:auto">Clear</button></div>
+      <div class="section-title" style="justify-content:space-between;display:flex;align-items:center">
+        <span>State / Region</span>
+        <button class="btn sm" id="clearStates" style="font-size:9px;padding:3px 8px">Clear</button>
+      </div>
       <select id="stateFilter" multiple></select>
     </div>
 
@@ -237,8 +239,8 @@
       </div>
       <div id="typeContainer"></div>
       <div class="type-hint">
-        <b style="color:var(--topo-green)">MUST</b> = route must be this type &nbsp;·&nbsp;
-        <b style="color:var(--topo-blue)">CAN</b> = fine whether included or not &nbsp;·&nbsp;
+        <b style="color:var(--topo-green)">MUST</b> = route must have all selected &nbsp;·&nbsp;
+        <b style="color:var(--topo-blue)">CAN</b> = route needs at least one &nbsp;·&nbsp;
         <b style="color:var(--danger)">NOT</b> = route must exclude
       </div>
     </div>
@@ -246,8 +248,8 @@
     <div class="section" style="--i:5">
       <div class="section-title">Grade</div>
       <div class="range-inputs">
-        <input type="text" id="ratingMin" placeholder="Min (5.9, V3…)">
-        <input type="text" id="ratingMax" placeholder="Max (5.12, V8…)">
+        <input type="text" id="ratingMin" placeholder="Min (5.9, WI3…)">
+        <input type="text" id="ratingMax" placeholder="Max (5.12, WI6…)">
       </div>
     </div>
 
@@ -338,22 +340,14 @@
         </div>
       </div>
       <div class="panel-count" id="panelCount"></div>
-      <!-- Cluster summary (shown when agg circle clicked) -->
-      <div id="clusterSummary" style="display:none; padding:10px 16px; border-bottom:1px solid rgba(255,255,255,0.08); background:rgba(39,174,96,0.06);">
-        <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
-          <div style="flex:1; min-width:80px; background:rgba(0,0,0,0.2); border-radius:6px; padding:8px 10px; text-align:center; border:1px solid rgba(255,255,255,0.08);">
-            <div style="font-size:9px; font-family:'DM Mono',monospace; color:var(--earth-light); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">Median Grade</div>
-            <div id="csSummMedianGrade" style="font-size:18px; font-weight:700; color:var(--accent); font-family:'Chakra Petch',sans-serif;">—</div>
-          </div>
-          <div style="flex:1; min-width:80px; background:rgba(0,0,0,0.2); border-radius:6px; padding:8px 10px; text-align:center; border:1px solid rgba(255,255,255,0.08);">
-            <div style="font-size:9px; font-family:'DM Mono',monospace; color:var(--earth-light); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">Median Stars</div>
-            <div id="csSummMedianStars" style="font-size:18px; font-weight:700; color:#f1c40f; font-family:'Chakra Petch',sans-serif;">—</div>
-          </div>
+      <div id="clusterStats" style="display:none;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;background:rgba(39,174,96,0.06)">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;font-family:'DM Mono',monospace;font-size:10px;margin-bottom:8px">
+          <span>Median Grade: <span id="csMedianGrade" style="color:var(--accent);font-weight:700">—</span></span>
+          <span>Trad: <span id="csTrad" style="color:var(--topo-green);font-weight:700">0</span></span>
+          <span>Sport: <span id="csSport" style="color:var(--topo-blue);font-weight:700">0</span></span>
+          <span>Top Rope: <span id="csTR" style="color:#9b59b6;font-weight:700">0</span></span>
         </div>
-        <div id="csTypeCounts" style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:10px;"></div>
-        <div style="height:120px; background:rgba(0,0,0,0.2); border-radius:6px; padding:6px; border:1px solid rgba(255,255,255,0.06);">
-          <canvas id="clusterGradeChart"></canvas>
-        </div>
+        <div style="height:100px;width:100%"><canvas id="clusterGradeChart"></canvas></div>
       </div>
       <div id="panelRouteList">
         <div id="vsInner"></div>
@@ -478,21 +472,9 @@ var SCHEMES = {
 
 function getColor(value, sorted, mode) {
   if (value == null || value < 0 || !sorted.length) return '#718096';
-  // For rating mode, handle boulder grades (>=100) separately from roped grades
-  if (mode === 'rating' && value >= 100) {
-    var boulderOnly = sorted.filter(function(v){ return v >= 100; });
-    if (!boulderOnly.length) return '#e74c3c';
-    var lo2 = 0, hi2 = boulderOnly.length - 1;
-    while (lo2 < hi2) { var mid2 = (lo2 + hi2) >> 1; if (boulderOnly[mid2] < value) lo2 = mid2 + 1; else hi2 = mid2; }
-    var norm2 = lo2 / (boulderOnly.length - 1 || 1);
-    var cs2 = ['#2980b9','#8e44ad','#e74c3c']; // blue→purple→red for boulders
-    return norm2 <= 0.5 ? lerpHex(cs2[0], cs2[1], norm2 * 2) : lerpHex(cs2[1], cs2[2], (norm2 - 0.5) * 2);
-  }
-  var ropedSorted = (mode === 'rating') ? sorted.filter(function(v){ return v < 100; }) : sorted;
-  if (!ropedSorted.length) return '#718096';
-  var lo = 0, hi = ropedSorted.length - 1;
-  while (lo < hi) { var mid = (lo + hi) >> 1; if (ropedSorted[mid] < value) lo = mid + 1; else hi = mid; }
-  var norm = lo / (ropedSorted.length - 1 || 1);
+  var lo = 0, hi = sorted.length - 1;
+  while (lo < hi) { var mid = (lo + hi) >> 1; if (sorted[mid] < value) lo = mid + 1; else hi = mid; }
+  var norm = lo / (sorted.length - 1 || 1);
   var cs = SCHEMES[mode] || SCHEMES.rating;
   return norm <= 0.5 ? lerpHex(cs[0], cs[1], norm * 2) : lerpHex(cs[1], cs[2], (norm - 0.5) * 2);
 }
@@ -555,7 +537,7 @@ function doFilter(params) {
   var stateSet  = {};
   for (var si = 0; si < selStates.length; si++) stateSet[selStates[si]] = true;
 
-  var anyTF     = mustTypes.length || notTypes.length;
+  var anyTF     = mustTypes.length || canTypes.length || notTypes.length;
   var rMinN     = rMinRaw ? gradeToNum(rMinRaw) : -Infinity;
   var rMaxN     = rMaxRaw ? gradeToNum(rMaxRaw) :  Infinity;
   var hasRating = rMinRaw || rMaxRaw;
@@ -569,7 +551,11 @@ function doFilter(params) {
       var tl = r._tl;
       for (var i = 0; i < mustTypes.length; i++) { if (tl.indexOf(mustTypes[i]) < 0) return false; }
       for (var i = 0; i < notTypes.length;  i++) { if (tl.indexOf(notTypes[i])  >= 0) return false; }
-      // CAN types: no restriction — route can include them or not
+      if (canTypes.length) {
+        var ok = false;
+        for (var i = 0; i < canTypes.length; i++) { if (tl.indexOf(canTypes[i]) >= 0) { ok = true; break; } }
+        if (!ok) return false;
+      }
     }
     if (hasRating) {
       var g = r._grade; if (g < 0) return false;
@@ -606,36 +592,16 @@ function calcGradeDistribution(routes) {
 // ─── Aggregation helpers ──────────────────────────────────────────
 function makeAgg(routes, name, lat, lon) {
   var id     = 'c' + (++clusterSeq);
-  var grades = routes.map(function(r){ return r._grade; }).filter(function(n){ return n > -1; });
-  var ropedGrades = grades.filter(function(n){ return n < 100; });
-  var boulderGrades = grades.filter(function(n){ return n >= 100; });
-  // Type counts
-  var typeCounts = {trad:0,sport:0,tr:0,boulder:0,alpine:0,ice:0,mixed:0,snow:0,aid:0};
-  for (var i = 0; i < routes.length; i++) {
-    var tl = routes[i]._tl || '';
-    if (tl.indexOf('trad')>=0) typeCounts.trad++;
-    if (tl.indexOf('sport')>=0) typeCounts.sport++;
-    if (tl.indexOf('tr')>=0) typeCounts.tr++;
-    if (tl.indexOf('boulder')>=0) typeCounts.boulder++;
-    if (tl.indexOf('alpine')>=0) typeCounts.alpine++;
-    if (tl.indexOf('ice')>=0) typeCounts.ice++;
-    if (tl.indexOf('mixed')>=0) typeCounts.mixed++;
-    if (tl.indexOf('snow')>=0) typeCounts.snow++;
-    if (tl.indexOf('aid')>=0) typeCounts.aid++;
-  }
+  var grades = routes.map(function(r){ return r._grade; }).filter(function(n){ return n > -1 && n < 100; });
   clusterStore[id] = routes;
   return {
     _isAgg: true, _cid: id, _name: name,
     'Area Latitude': lat, 'Area Longitude': lon,
     _count:    routes.length,
-    _medGrade: ropedGrades.length ? med(ropedGrades) : (boulderGrades.length ? med(boulderGrades) : -1),
-    _medGradeRoped: ropedGrades.length ? med(ropedGrades) : -1,
-    _medGradeBoulder: boulderGrades.length ? med(boulderGrades) : -1,
+    _medGrade: med(grades),
     _medStars: med(routes.map(function(r){ return r._stars; })),
     _medLen:   med(routes.map(function(r){ return r._length; })),
     _medPitch: med(routes.map(function(r){ return r._pitches; })),
-    _typeCounts: typeCounts,
-    _gradeDist: calcGradeDistribution(routes),
   };
 }
 
@@ -764,12 +730,6 @@ function buildAggFeatures(display, vizMode, scale, scaleMethod) {
       p.cid    = r._cid;
       p.count  = r._count;
       p.radius = calcRadius(r._count, minC, maxC, scaleMethod, scale);
-      p.medGrade = r._medGrade;
-      p.medGradeRoped = r._medGradeRoped;
-      p.medGradeBoulder = r._medGradeBoulder;
-      p.medStars = r._medStars;
-      p.typeCounts = JSON.stringify(r._typeCounts || {});
-      p.gradeDist = JSON.stringify(r._gradeDist || {});
     } else {
       p.route   = r.Route;
       p.rating  = r.Rating;
@@ -819,7 +779,6 @@ function buildRouteFeatures(routes, vizMode) {
         length:  r._length  || 0,
         pitches: r._pitches || 0,
         location:r.Location || '',
-        locShort:r.Location_Short || '',
         url:     r.URL      || ''
       }
     });
@@ -894,7 +853,18 @@ self.onmessage = function(e) {
   }
 
   if (data.type === 'GET_ROUTES') {
-    self.postMessage({type:'ROUTES_RESULT', routes: clusterStore[data.cid] || [], title:data.title, sub:data.sub, extra:data.extra||null});
+    var routes = clusterStore[data.cid] || [];
+    var grades = routes.map(function(r){ return r._grade; }).filter(function(n){ return n > -1; });
+    var medianGrade = med(grades);
+    var tradCount = 0, sportCount = 0, trCount = 0;
+    for (var ci = 0; ci < routes.length; ci++) {
+      var tl = (routes[ci]._tl || '');
+      if (tl.indexOf('trad') >= 0) tradCount++;
+      if (tl.indexOf('sport') >= 0) sportCount++;
+      if (tl.indexOf('tr') >= 0) trCount++;
+    }
+    var gradeDistribution = calcGradeDistribution(routes);
+    self.postMessage({type:'ROUTES_RESULT', routes: routes, title:data.title, sub:data.sub, stats:{medianGrade:medianGrade, tradCount:tradCount, sportCount:sportCount, trCount:trCount, gradeDistribution:gradeDistribution, total:routes.length}});
     return;
   }
 };
@@ -915,7 +885,7 @@ const ROUTE_TYPES = [
   {id:'Boulder',label:'Boulder'},{id:'Alpine',label:'Alpine'},{id:'Ice',label:'Ice'},
   {id:'Mixed',label:'Mixed'},{id:'Snow',label:'Snow'},{id:'Aid',label:'Aid'}
 ];
-const ITEM_H = 95;  
+const ITEM_H = 95;
 
 let map;
 let mapReady      = false;
@@ -930,7 +900,7 @@ let typeState     = {};
 let gradeChart    = null;
 let clusterGradeChart = null;
 
-ROUTE_TYPES.forEach(t => typeState[t.id] = 'can');
+ROUTE_TYPES.forEach(t => typeState[t.id] = null);
 
 worker.onmessage = ({data}) => {
   switch (data.type) {
@@ -959,22 +929,16 @@ function onWorkerLoaded(data) {
   scheduleFilter();
 }
 
-const GRADE_COLORS = {
-  '≤5.7': '#27ae60', '5.8': '#2ecc71', '5.9': '#f1c40f',
-  '5.10': '#f39c12', '5.11': '#e67e22', '5.12': '#e74c3c',
-  '5.13+': '#8e44ad', 'Boulder': '#3498db'
-};
-
 function initChart() {
     const ctx = document.getElementById('gradeChart').getContext('2d');
     gradeChart = new Chart(ctx, {
         type: 'bar',
-        data: { labels: [], datasets: [{ label: 'Routes', data: [], backgroundColor: [], borderRadius: 3 }] },
+        data: { labels: [], datasets: [{ label: 'Routes', data: [], backgroundColor: '#3498db', borderRadius: 3 }] },
         options: {
             responsive: true, maintainAspectRatio: false,
             scales: {
                 y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:9} } },
-                x: { grid: { display: false }, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:9}, maxRotation:45 } }
+                x: { grid: { display: false }, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:9} } }
             },
             plugins: { legend: { display: false }, tooltip: {titleFont:{family:"'Chakra Petch'"}, bodyFont:{family:"'DM Mono'"}} }
         }
@@ -986,12 +950,8 @@ function onFilterResult(data) {
   document.getElementById('totalRoutes').textContent   = data.totalCount.toLocaleString();
 
   if (gradeChart && data.gradeCounts) {
-      const labels = Object.keys(data.gradeCounts).filter(k => data.gradeCounts[k] > 0);
-      const vals = labels.map(k => data.gradeCounts[k]);
-      const colors = labels.map(k => GRADE_COLORS[k] || '#718096');
-      gradeChart.data.labels = labels;
-      gradeChart.data.datasets[0].data = vals;
-      gradeChart.data.datasets[0].backgroundColor = colors;
+      gradeChart.data.labels = Object.keys(data.gradeCounts);
+      gradeChart.data.datasets[0].data = Object.values(data.gradeCounts);
       gradeChart.update();
   }
 
@@ -1000,7 +960,7 @@ function onFilterResult(data) {
 }
 
 function onRoutesResult(data) {
-  openPanel(data.routes, data.title, data.sub, data.extra || null);
+  openPanel(data.routes, data.title, data.sub, data.stats);
 }
 
 // ── Global Search Handling ──
@@ -1052,9 +1012,6 @@ function applyMapResult(data) {
   nativeLayers.forEach(id => {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', isRoute ? 'visible' : 'none');
   });
-  if (map.getLayer('routes-heatmap')) {
-    map.setLayoutProperty('routes-heatmap', 'visibility', 'none');
-  }
   aggLayers.forEach(id => {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', (!isRoute) ? 'visible' : 'none');
   });
@@ -1196,15 +1153,8 @@ function setupLayers() {
 function handleAggClick(e) {
   const p = e.features[0].properties;
   const coords = e.features[0].geometry.coordinates.slice();
-  if (p.isAgg === 'true') {
-    const extra = {
-      medGrade: p.medGrade, medGradeRoped: p.medGradeRoped, medGradeBoulder: p.medGradeBoulder,
-      medStars: p.medStars,
-      typeCounts: typeof p.typeCounts === 'string' ? JSON.parse(p.typeCounts) : (p.typeCounts || {}),
-      gradeDist: typeof p.gradeDist === 'string' ? JSON.parse(p.gradeDist) : (p.gradeDist || {}),
-    };
-    worker.postMessage({ type: 'GET_ROUTES', cid: p.cid, title: p.name, sub: `${Number(p.count).toLocaleString()} routes`, extra });
-  } else showPopup(coords, p);
+  if (p.isAgg === 'true') worker.postMessage({ type: 'GET_ROUTES', cid: p.cid, title: p.name, sub: `${Number(p.count).toLocaleString()} routes` });
+  else showPopup(coords, p);
 }
 
 function handleNativeClusterClick(e) {
@@ -1219,10 +1169,10 @@ function handleNativeClusterClick(e) {
         _grade: typeof p.grade === 'number' ? p.grade : parseFloat(p.grade) || -1,
         _length: typeof p.length === 'number' ? p.length : parseFloat(p.length) || 0,
         _pitches: typeof p.pitches === 'number' ? p.pitches : parseInt(p.pitches) || 0,
-        Location: p.location || '', URL: p.url || '', Location_Short: p.locShort || ''
+        Location: p.location || '', URL: p.url || ''
       };
     });
-    openPanel(routes, 'Routes in Area', `${count.toLocaleString()} routes`, null);
+    openPanel(routes, 'Routes in Area', `${count.toLocaleString()} routes`);
   });
 }
 
@@ -1262,8 +1212,12 @@ function buildTypeUI() {
     c.appendChild(row);
     row.querySelectorAll('.tbtn').forEach(btn => btn.addEventListener('click', () => {
       const tid = btn.dataset.id, m = btn.dataset.m;
-      // If already on this mode, revert to 'can' (never blank). If clicking 'can' while 'can', stay 'can'.
-      typeState[tid] = (typeState[tid] === m && m !== 'can') ? 'can' : m;
+      typeState[tid] = (typeState[tid] === m) ? null : m;
+      if (tid === 'Boulder' && (m==='must'||m==='can') && typeState[tid]===m) {
+        ROUTE_TYPES.forEach(t => { if (t.id!=='Boulder' && (typeState[t.id]==='must'||typeState[t.id]==='can')) typeState[t.id]=null; });
+      } else if (tid !== 'Boulder' && (m==='must'||m==='can') && typeState[tid]===m) {
+        if (typeState['Boulder']==='must'||typeState['Boulder']==='can') typeState['Boulder']=null;
+      }
       syncTypeUI();
       scheduleFilter();
     }));
@@ -1272,10 +1226,10 @@ function buildTypeUI() {
 
 function syncTypeUI() {
   ROUTE_TYPES.forEach(({id}) => {
-    const s = typeState[id] || 'can';
+    const s = typeState[id];
     const row = document.getElementById(`tr-${id}`);
     if (!row) return;
-    row.className = `type-row s-${s}`;
+    row.className = `type-row${s ? ' s-'+s : ''}`;
     row.querySelectorAll('.tbtn').forEach(b => b.classList.toggle('active', b.dataset.m === s));
   });
 }
@@ -1317,7 +1271,7 @@ function readURLState() {
             }
 
             // Restore type state
-            ROUTE_TYPES.forEach(t => typeState[t.id] = 'can');
+            ROUTE_TYPES.forEach(t => typeState[t.id] = null);
             if(p.mustTypes) p.mustTypes.forEach(tid => { const found = ROUTE_TYPES.find(t=>t.id.toLowerCase()===tid); if(found) typeState[found.id] = 'must'; });
             if(p.canTypes) p.canTypes.forEach(tid => { const found = ROUTE_TYPES.find(t=>t.id.toLowerCase()===tid); if(found) typeState[found.id] = 'can'; });
             if(p.notTypes) p.notTypes.forEach(tid => { const found = ROUTE_TYPES.find(t=>t.id.toLowerCase()===tid); if(found) typeState[found.id] = 'not'; });
@@ -1382,7 +1336,7 @@ function resetFilters() {
   ['ratingMin','ratingMax','starsMin','starsMax','lengthMin','lengthMax','pitchesMin','pitchesMax'].forEach(id => document.getElementById(id).value = '');
   const sel = document.getElementById('stateFilter');
   for (let i = 0; i < sel.options.length; i++) sel.options[i].selected = false;
-  ROUTE_TYPES.forEach(t => typeState[t.id] = 'can'); syncTypeUI();
+  ROUTE_TYPES.forEach(t => typeState[t.id] = null); syncTypeUI();
   document.getElementById('aggregationLevel').value = 'Location_Short';
   document.getElementById('radiusGroup').style.display = 'none';
   document.getElementById('scaleDots').checked = true;
@@ -1391,77 +1345,20 @@ function resetFilters() {
   scheduleFilter();
 }
 
-function fmtGrade(g) {
-  if (g == null || g < 0) return '—';
-  if (g >= 100) return 'V' + Math.round(g - 100);
-  const whole = Math.floor(g), frac = g - whole;
-  let sub = '';
-  if (frac >= 0.7) sub = 'd';
-  else if (frac >= 0.4) sub = 'c';
-  else if (frac >= 0.2) sub = 'b';
-  return `5.${whole}${sub}`;
+function gradeNumToLabel(n) {
+  if (n < 0) return '—';
+  if (n >= 100) return 'V' + (n - 100);
+  return '5.' + Math.round(n);
 }
 
-function openPanel(routes, title, sub, extra) {
+function openPanel(routes, title, sub, stats) {
   document.getElementById('panelTitle').textContent = title;
   document.getElementById('panelSub').textContent   = sub;
   document.getElementById('pSearch').value    = '';
   document.getElementById('pMinStars').value  = '';
   document.getElementById('pMinPitches').value= '';
-  // item 17: DON'T reset sort - keep user's selection
+  document.getElementById('pSort').value      = 'stars-desc';
   pActiveType = null;
-
-  // item 14: Cluster summary
-  const summaryEl = document.getElementById('clusterSummary');
-  if (extra && (extra.medGrade !== undefined || extra.typeCounts)) {
-    summaryEl.style.display = 'block';
-    // Median grade
-    const mg = extra.medGradeRoped >= 0 ? extra.medGradeRoped : (extra.medGradeBoulder >= 0 ? extra.medGradeBoulder : -1);
-    document.getElementById('csSummMedianGrade').textContent = fmtGrade(mg);
-    document.getElementById('csSummMedianStars').textContent = extra.medStars != null ? (Math.round(extra.medStars * 10)/10).toFixed(1) + ' ★' : '—';
-
-    // Type counts
-    const tc = extra.typeCounts || {};
-    const tcEl = document.getElementById('csTypeCounts');
-    tcEl.innerHTML = '';
-    const TYPE_COLORS = {trad:'#27ae60',sport:'#3498db',tr:'#9b59b6',boulder:'#e67e22',alpine:'#1abc9c',ice:'#2980b9',mixed:'#8e44ad',snow:'#ecf0f1',aid:'#e74c3c'};
-    const TYPE_LABELS = {trad:'Trad',sport:'Sport',tr:'Top Rope',boulder:'Boulder',alpine:'Alpine',ice:'Ice',mixed:'Mixed',snow:'Snow',aid:'Aid'};
-    Object.entries(tc).forEach(([type, count]) => {
-      if (!count) return;
-      const chip = document.createElement('div');
-      chip.style.cssText = `background:rgba(0,0,0,0.3); border:1px solid ${TYPE_COLORS[type]||'#718096'}; border-radius:5px; padding:4px 8px; font-family:'DM Mono',monospace; font-size:10px; color:${TYPE_COLORS[type]||'#718096'};`;
-      chip.innerHTML = `<span style="font-weight:700">${count.toLocaleString()}</span> <span style="opacity:0.8">${TYPE_LABELS[type]||type}</span>`;
-      tcEl.appendChild(chip);
-    });
-
-    // Cluster grade chart
-    const gd = extra.gradeDist || {};
-    const cgLabels = Object.keys(gd).filter(k => gd[k] > 0);
-    const cgData = cgLabels.map(k => gd[k]);
-    const cgColors = cgLabels.map(k => GRADE_COLORS[k] || '#718096');
-    if (!clusterGradeChart) {
-      const cgCtx = document.getElementById('clusterGradeChart').getContext('2d');
-      clusterGradeChart = new Chart(cgCtx, {
-        type: 'bar',
-        data: { labels: cgLabels, datasets: [{ data: cgData, backgroundColor: cgColors, borderRadius: 3 }] },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          scales: {
-            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:8} } },
-            x: { grid: {display:false}, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:8}, maxRotation:45 } }
-          },
-          plugins: { legend:{display:false}, tooltip:{callbacks:{label: ctx => ` ${ctx.raw.toLocaleString()} routes`}, titleFont:{family:"'Chakra Petch'"}, bodyFont:{family:"'DM Mono'"}} }
-        }
-      });
-    } else {
-      clusterGradeChart.data.labels = cgLabels;
-      clusterGradeChart.data.datasets[0].data = cgData;
-      clusterGradeChart.data.datasets[0].backgroundColor = cgColors;
-      clusterGradeChart.update();
-    }
-  } else {
-    summaryEl.style.display = 'none';
-  }
 
   const typeSet = new Set();
   for (const r of routes) (r['Route Type']||'').split(',').forEach(t => { const s=t.trim(); if(s) typeSet.add(s); });
@@ -1481,6 +1378,35 @@ function openPanel(routes, title, sub, extra) {
   });
   vsRoutes = routes; refreshPanel();
   document.getElementById('routePanel').classList.add('open');
+
+  // Show cluster stats if available
+  const csDiv = document.getElementById('clusterStats');
+  if (stats) {
+    document.getElementById('csMedianGrade').textContent = gradeNumToLabel(stats.medianGrade);
+    document.getElementById('csTrad').textContent = stats.tradCount;
+    document.getElementById('csSport').textContent = stats.sportCount;
+    document.getElementById('csTR').textContent = stats.trCount;
+    csDiv.style.display = 'block';
+    // Build/update cluster grade chart
+    const labels = Object.keys(stats.gradeDistribution);
+    const values = Object.values(stats.gradeDistribution);
+    const ctx = document.getElementById('clusterGradeChart').getContext('2d');
+    if (clusterGradeChart) { clusterGradeChart.destroy(); }
+    clusterGradeChart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Routes', data: values, backgroundColor: '#27ae60', borderRadius: 2 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          y: { beginAtZero: true, grid:{color:'rgba(255,255,255,0.05)'}, ticks:{color:'#718096',font:{family:"'DM Mono'",size:8}} },
+          x: { grid:{display:false}, ticks:{color:'#718096',font:{family:"'DM Mono'",size:8}} }
+        },
+        plugins: { legend:{display:false}, tooltip:{callbacks:{label:ctx=>`${ctx.raw} routes`},titleFont:{family:"'Chakra Petch'"},bodyFont:{family:"'DM Mono'"}}}
+      }
+    });
+  } else {
+    csDiv.style.display = 'none';
+  }
 }
 
 function refreshPanel() {
@@ -1515,19 +1441,18 @@ function renderVS(routes) {
   inner.style.height = `${routes.length * ITEM_H}px`;
   inner.innerHTML = '';
   const paint = () => {
-    const st = container.scrollTop, vh = container.clientHeight || container.offsetHeight || 480;
+    const st = container.scrollTop, vh = container.clientHeight || 480;
     const s = Math.max(0, Math.floor(st / ITEM_H) - 4), e = Math.min(routes.length - 1, Math.ceil((st + vh) / ITEM_H) + 4);
     inner.innerHTML = '';
     const frag = document.createDocumentFragment();
     for (let i = s; i <= e; i++) frag.appendChild(makeCard(routes[i], i));
     inner.appendChild(frag);
   };
+  paint();
   container.removeEventListener('scroll', vsScrollFn);
   vsScrollFn = paint;
   container.addEventListener('scroll', vsScrollFn, {passive:true});
   container.scrollTop = 0;
-  // Use RAF to ensure container has rendered dimensions before painting
-  requestAnimationFrame(() => { paint(); requestAnimationFrame(paint); });
 }
 
 function makeCard(r, idx) {
@@ -1539,8 +1464,8 @@ function makeCard(r, idx) {
   const wall = r.Location_Short || '';
   div.innerHTML = `
     <div class="rc-name" title="${esc(r.Route||'')}">${esc(r.Route||'Unknown')}</div>
-    ${wall ? `<div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--topo-blue);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${esc(wall)}</div>` : ''}
     <div class="rc-meta"><span>${esc(grade)}</span><span class="rc-stars">${ss} ${sn.toFixed(1)}</span>${len ? `<span>${len}</span>` : ''}${pit ? `<span>${pit}</span>` : ''}</div>
+    ${wall ? `<div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--earth-light);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📍 ${esc(wall)}</div>` : ''}
     <div class="rc-tags">${types.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>`;
   div.addEventListener('click', () => { if (r.URL) window.open(r.URL, '_blank'); });
   return div;
@@ -1584,8 +1509,8 @@ function fetchInitialData() {
 const $ = id => document.getElementById(id);
 
 $('resetBtn').addEventListener('click', resetFilters);
-$('clearTypes').addEventListener('click', () => { ROUTE_TYPES.forEach(t => typeState[t.id]='can'); syncTypeUI(); scheduleFilter(); });
-$('clearStates').addEventListener('click', () => { const sel = document.getElementById('stateFilter'); Array.from(sel.options).forEach(o => o.selected = false); scheduleFilter(); });
+$('clearTypes').addEventListener('click', () => { ROUTE_TYPES.forEach(t => typeState[t.id]=null); syncTypeUI(); scheduleFilter(); });
+$('clearStates').addEventListener('click', () => { const sel = document.getElementById('stateFilter'); for(let i=0;i<sel.options.length;i++) sel.options[i].selected=false; scheduleFilter(); });
 
 $('aggregationLevel').addEventListener('change', e => { $('radiusGroup').style.display = e.target.value==='proximity' ? 'block' : 'none'; scheduleFilter(); });
 $('proximityRadius').addEventListener('input',  scheduleFilter);
