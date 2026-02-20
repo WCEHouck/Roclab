@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mountain Project Route Explorer</title>
+    <script src='https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css' rel='stylesheet' />
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+    <style>
+        :root {
+            --earth-dark: #2d3436; --earth-medium: #4a5568; --earth-light: #718096;
+            --topo-green: #27ae60; --topo-blue: #3498db; --topo-orange: #e67e22;
+            --snow: #ecf0f1; --accent: #f39c12; --danger: #e74c3c;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Chakra Petch',sans-serif; background:linear-gradient(135deg,#1a1a2e,#16213e); color:var(--snow); overflow:hidden; height:100vh; }
+        #container { display:flex; height:100vh; }
+        #sidebar { width:370px; background:rgba(45,52,54,0.95); backdrop-filter:blur(10px); border-right:2px solid var(--topo-green); overflow-y:auto; padding:20px; box-shadow:4px 0 20px rgba(0,0,0,0.5); flex-shrink:0; position: relative; z-index: 100;}
+        #map { flex:1; position:relative; overflow:hidden; }
+        .header { margin-bottom:20px; border-bottom:2px solid var(--accent); padding-bottom:14px; }
+        h1 { font-size:22px; font-weight:700; background:linear-gradient(135deg,var(--topo-green),var(--topo-blue)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; margin-bottom:4px; }
+        .subtitle { font-family:'DM Mono',monospace; font-size:10px; color:var(--earth-light); text-transform:uppercase; letter-spacing:1px; }
+        
+        /* Global Search */
+        .global-search-container { position:relative; margin-bottom:18px; }
+        .global-search-container input { width:100%; padding:9px 12px; background:rgba(0,0,0,0.2); border:1px solid var(--topo-blue); border-radius:6px; color:var(--snow); font-family:'Chakra Petch',sans-serif; font-size:13px; outline:none; transition:all 0.3s; }
+        .global-search-container input:focus { border-color:var(--accent); box-shadow:0 0 8px rgba(243,156,18,0.4); }
+        .search-dropdown { position:absolute; top:100%; left:0; right:0; background:rgba(45,52,54,0.98); border:1px solid var(--topo-green); border-top:none; border-radius:0 0 6px 6px; max-height:250px; overflow-y:auto; z-index:500; display:none; box-shadow:0 8px 16px rgba(0,0,0,0.6); }
+        .search-item { padding:8px 12px; cursor:pointer; font-family:'DM Mono',monospace; font-size:11px; border-bottom:1px solid rgba(255,255,255,0.05); transition:background 0.2s; }
+        .search-item:hover { background:rgba(243,156,18,0.15); }
+        .search-item .si-name { font-weight:700; color:var(--snow); font-family:'Chakra Petch',sans-serif; font-size:13px; margin-bottom:2px; }
+        .search-item .si-loc { color:var(--earth-light); font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+        .section { margin-bottom:18px; }
+        .section-title { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:1px; color:var(--accent); margin-bottom:9px; display:flex; align-items:center; gap:7px; }
+        .section-title::before { content:''; width:3px; height:13px; background:var(--accent); border-radius:2px; }
+        .btn { background:linear-gradient(135deg,var(--topo-green),var(--topo-blue)); color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-family:'Chakra Petch',sans-serif; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.5px; transition:all 0.3s; width:100%; margin-top:8px; }
+        .btn:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(39,174,96,0.4); }
+        .btn.reset { background:linear-gradient(135deg,var(--danger),var(--topo-orange)); }
+        .btn.sm { width:auto; margin-top:0; padding:4px 9px; font-size:10px; }
+        select,input[type="number"],input[type="text"] { width:100%; padding:7px 10px; background:rgba(255,255,255,0.05); border:1px solid var(--earth-light); border-radius:5px; color:var(--snow); font-family:'DM Mono',monospace; font-size:11px; margin-bottom:6px; transition:all 0.3s; }
+        select:focus,input[type="number"]:focus,input[type="text"]:focus { outline:none; border-color:var(--accent); background:rgba(243,156,18,0.08); }
+        select[multiple] { min-height:90px; }
+        .filter-group { margin-bottom:10px; }
+        .filter-label { font-size:10px; font-weight:500; color:var(--earth-light); margin-bottom:4px; display:block; text-transform:uppercase; letter-spacing:0.5px; }
+        .range-inputs { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+
+        /* Type Filter */
+        .type-filter-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+        .type-legend { display:flex; gap:5px; }
+        .chip { font-family:'DM Mono',monospace; font-size:9px; font-weight:700; padding:2px 6px; border-radius:3px; }
+        .chip.must { background:rgba(39,174,96,0.25); border:1px solid var(--topo-green); color:#5ddb8d; }
+        .chip.can  { background:rgba(52,152,219,0.25); border:1px solid var(--topo-blue); color:#7ec8f0; }
+        .chip.not  { background:rgba(231,76,60,0.25); border:1px solid var(--danger); color:#f08080; }
+        .type-row { display:flex; align-items:center; justify-content:space-between; padding:5px 8px; background:rgba(255,255,255,0.03); border-radius:5px; border:1px solid transparent; margin-bottom:4px; transition:all 0.2s; }
+        .type-row.s-must { border-color:var(--topo-green); background:rgba(39,174,96,0.07); }
+        .type-row.s-can  { border-color:var(--topo-blue); background:rgba(52,152,219,0.07); }
+        .type-row.s-not  { border-color:var(--danger); background:rgba(231,76,60,0.07); }
+        .type-name { font-family:'DM Mono',monospace; font-size:11px; min-width:68px; }
+        .type-btns { display:flex; gap:3px; }
+        .tbtn { font-family:'DM Mono',monospace; font-size:9px; font-weight:700; padding:3px 7px; border-radius:3px; border:1px solid var(--earth-medium); cursor:pointer; background:transparent; color:var(--earth-light); transition:all 0.15s; }
+        .tbtn.must { border-color:var(--topo-green); }
+        .tbtn.can  { border-color:var(--topo-blue); }
+        .tbtn.not  { border-color:var(--danger); }
+        .tbtn.active.must { background:rgba(39,174,96,0.4); color:#5ddb8d; }
+        .tbtn.active.can  { background:rgba(52,152,219,0.4); color:#7ec8f0; }
+        .tbtn.active.not  { background:rgba(231,76,60,0.4); color:#f08080; }
+        .type-hint { font-size:9px; font-family:'DM Mono',monospace; color:var(--earth-light); margin-top:5px; line-height:1.5; }
+
+        /* Stats & Chart */
+        .stats { background:rgba(39,174,96,0.08); border:1px solid var(--topo-green); border-radius:7px; padding:12px; font-family:'DM Mono',monospace; font-size:11px; margin-bottom:10px;}
+        .stats-row { display:flex; justify-content:space-between; margin-bottom:5px; }
+        .stats-row:last-child { margin-bottom:0; }
+        .stats-value { color:var(--accent); font-weight:600; }
+        .chart-container { background:rgba(255,255,255,0.03); padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); height:160px; width:100%;}
+
+        /* Legend */
+        .legend { background:rgba(45,52,54,0.95); backdrop-filter:blur(10px); position:absolute; bottom:20px; right:20px; padding:13px; border-radius:8px; border:2px solid var(--topo-green); min-width:170px; box-shadow:0 8px 28px rgba(0,0,0,0.5); z-index:5; }
+        .legend-title { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:1px; color:var(--accent); margin-bottom:8px; }
+        .legend-gradient { height:16px; border-radius:4px; margin-bottom:5px; }
+        .legend-labels { display:flex; justify-content:space-between; font-size:10px; font-family:'DM Mono',monospace; color:var(--earth-light); }
+
+        /* Cap notice — repurposed for info messages */
+        #capNotice { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(39,174,96,0.92); color:#fff; padding:6px 14px; border-radius:5px; font-family:'DM Mono',monospace; font-size:10px; z-index:10; display:none; white-space:nowrap; box-shadow:0 3px 12px rgba(0,0,0,0.4); }
+
+        /* Route Panel */
+        #routePanel { position:absolute; top:0; right:0; bottom:0; width:430px; background:rgba(28,33,38,0.98); backdrop-filter:blur(14px); border-left:2px solid var(--topo-green); display:flex; flex-direction:column; z-index:20; transform:translateX(100%); transition:transform 0.3s cubic-bezier(0.4,0,0.2,1); box-shadow:-4px 0 24px rgba(0,0,0,0.7); }
+        #routePanel.open { transform:translateX(0); }
+        .panel-header { display:flex; align-items:flex-start; justify-content:space-between; padding:14px 16px; border-bottom:1px solid rgba(255,255,255,0.09); flex-shrink:0; }
+        .panel-title { font-size:14px; font-weight:700; color:var(--accent); }
+        .panel-sub { font-family:'DM Mono',monospace; font-size:10px; color:var(--earth-light); margin-top:2px; }
+        .panel-close { background:none; border:1px solid var(--earth-medium); color:var(--earth-light); width:26px; height:26px; border-radius:4px; cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center; transition:all 0.2s; flex-shrink:0; }
+        .panel-close:hover { border-color:var(--accent); color:var(--accent); }
+        .panel-controls { padding:10px 16px; border-bottom:1px solid rgba(255,255,255,0.06); flex-shrink:0; display:flex; flex-direction:column; gap:7px; }
+        .panel-row { display:flex; gap:7px; align-items:center; }
+        .panel-controls input,.panel-controls select { margin-bottom:0; font-size:11px; padding:6px 9px; }
+        .panel-controls input[type="text"] { flex:1; }
+        .panel-type-chips { display:flex; flex-wrap:wrap; gap:4px; }
+        .pchip { font-family:'DM Mono',monospace; font-size:9px; font-weight:700; padding:3px 8px; border-radius:3px; border:1px solid var(--earth-medium); background:transparent; color:var(--earth-light); cursor:pointer; transition:all 0.15s; }
+        .pchip:hover { border-color:var(--accent); color:var(--accent); }
+        .pchip.active { border-color:var(--topo-green); background:rgba(39,174,96,0.2); color:#5ddb8d; }
+        .panel-count { font-family:'DM Mono',monospace; font-size:9px; color:var(--earth-light); padding:4px 16px; flex-shrink:0; border-bottom:1px solid rgba(255,255,255,0.04); }
+
+        /* Virtual scroll */
+        #panelRouteList { flex:1; overflow-y:auto; position:relative; }
+        #vsInner { position:relative; width:100%; }
+        .route-card { position:absolute; left:0; right:0; padding:9px 16px; border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer; transition:background 0.15s; box-sizing:border-box; }
+        .route-card:hover { background:rgba(243,156,18,0.07); }
+        .rc-name { font-size:12px; font-weight:600; color:var(--snow); margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .rc-meta { display:flex; flex-wrap:wrap; gap:7px; font-family:'DM Mono',monospace; font-size:10px; color:var(--earth-light); }
+        .rc-stars { color:var(--accent); }
+        .rc-tags { display:flex; gap:3px; margin-top:3px; flex-wrap:wrap; }
+        .tag { font-family:'DM Mono',monospace; font-size:8px; font-weight:700; padding:1px 5px; border-radius:2px; background:rgba(39,174,96,0.18); border:1px solid rgba(39,174,96,0.35); color:#5ddb8d; }
+        .no-routes { padding:30px 16px; text-align:center; font-family:'DM Mono',monospace; font-size:11px; color:var(--earth-light); }
+
+        /* Checkbox */
+        .chk-item { display:flex; align-items:center; gap:7px; padding:7px; background:rgba(255,255,255,0.03); border-radius:4px; cursor:pointer; border:1px solid transparent; transition:all 0.2s; }
+        .chk-item:hover { background:rgba(243,156,18,0.08); border-color:var(--accent); }
+        .chk-item input { width:auto; margin:0; cursor:pointer; }
+        .chk-item label { font-size:11px; font-family:'DM Mono',monospace; cursor:pointer; }
+
+        /* Popup */
+        .mapboxgl-popup-content { background:rgba(45,52,54,0.98); color:var(--snow); border-radius:8px; border:2px solid var(--topo-green); padding:13px; font-family:'Chakra Petch',sans-serif; min-width:240px; max-width:340px; }
+        .popup-title { font-size:14px; font-weight:700; margin-bottom:7px; color:var(--accent); }
+        .popup-detail { font-size:11px; margin-bottom:3px; display:flex; gap:7px; }
+        .popup-label { font-family:'DM Mono',monospace; color:var(--earth-light); min-width:80px; }
+        .popup-value { color:var(--snow); font-weight:500; flex:1; }
+        .popup-link { display:inline-block; margin-top:7px; padding:5px 10px; background:var(--topo-green); color:#fff; text-decoration:none; border-radius:4px; font-size:10px; transition:all 0.2s; }
+        .popup-link:hover { background:var(--accent); }
+        .mapboxgl-popup-close-button { color:var(--accent); font-size:17px; padding:4px; }
+
+        ::-webkit-scrollbar { width:5px; }
+        ::-webkit-scrollbar-track { background:rgba(0,0,0,0.15); }
+        ::-webkit-scrollbar-thumb { background:var(--topo-green); border-radius:3px; }
+        ::-webkit-scrollbar-thumb:hover { background:var(--accent); }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+        .section { animation:fadeIn 0.35s ease forwards; animation-delay:calc(var(--i,0)*0.04s); opacity:0; }
+    </style>
+</head>
+<body>
+<div id="container">
+
+  <div id="sidebar">
+    <div class="header">
+      <h1>Route Explorer</h1>
+      <div class="subtitle">Mountain Project Visualization</div>
+    </div>
+
+    <!-- Global Route Search -->
+    <div class="global-search-container" style="--i:0">
+        <input type="text" id="globalSearchInput" placeholder="🔍 Search any route name..." autocomplete="off">
+        <div id="globalSearchDropdown" class="search-dropdown"></div>
+    </div>
+
+    <!-- Data Loading Section -->
+    <div class="section" style="--i:0" id="loadingSection">
+      <div class="section-title">Status</div>
+      <div style="padding:15px; background:rgba(39,174,96,0.1); border:1px solid var(--topo-green); border-radius:6px; font-size:12px; text-align:center;">
+          <span id="loadStatusText">Downloading Route Data...</span>
+      </div>
+    </div>
+
+    <!-- Controls Section (Hidden until loaded) -->
+    <div class="section" id="controlsSection" style="display:none; --i:0">
+      <button class="btn reset" id="resetBtn">↺ Reset All Filters</button>
+    </div>
+
+    <div class="section" style="--i:1">
+      <div class="section-title">Aggregation</div>
+      <div class="filter-group">
+        <label class="filter-label">Group By</label>
+        <select id="aggregationLevel">
+          <option value="route">Individual Routes</option>
+          <option value="proximity">Proximity (Miles)</option>
+          <option value="Location_Short">Location Short</option>
+          <option value="Subregion_1">Subregion 1</option>
+          <option value="Subregion_2">Subregion 2</option>
+          <option value="Subregion_3">Subregion 3</option>
+          <option value="Subregion_4">Subregion 4</option>
+          <option value="Subregion_5">Subregion 5</option>
+          <option value="State">State / Region</option>
+        </select>
+      </div>
+      <div class="filter-group" id="radiusGroup" style="display:none">
+        <label class="filter-label">Radius (Miles)</label>
+        <input type="number" id="proximityRadius" value="50" min="1" max="500">
+      </div>
+      <div class="filter-group">
+        <div class="chk-item">
+          <input type="checkbox" id="scaleDots" checked>
+          <label for="scaleDots">Scale dots by route count</label>
+        </div>
+      </div>
+      <div class="filter-group" id="scaleMethodGroup">
+        <label class="filter-label">Size Scale Method</label>
+        <select id="scaleMethod">
+          <option value="area" selected>Equal Area (perceptual) ★</option>
+          <option value="sqrt">Square Root — moderate</option>
+          <option value="log2">Logarithmic — compressed</option>
+          <option value="cbrt">Cube Root — subtle</option>
+          <option value="linear">Linear — max contrast</option>
+          <option value="fixed">Fixed Size</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section" style="--i:2">
+      <div class="section-title">Map Style</div>
+      <select id="mapStyle" style="margin-bottom:8px">
+        <option value="mapbox://styles/mapbox/outdoors-v12">Outdoors</option>
+        <option value="mapbox://styles/mapbox/satellite-streets-v12">Satellite + Streets</option>
+        <option value="mapbox://styles/mapbox/satellite-v9">Satellite</option>
+        <option value="mapbox://styles/mapbox/dark-v11">Dark</option>
+        <option value="mapbox://styles/mapbox/light-v11">Light</option>
+        <option value="mapbox://styles/mapbox/streets-v12">Streets</option>
+      </select>
+      
+      <div class="chk-item">
+        <input type="checkbox" id="toggleHeatmap">
+        <label for="toggleHeatmap">Enable Density Heatmap</label>
+      </div>
+    </div>
+
+    <div class="section" style="--i:3">
+      <div class="section-title">State / Region</div>
+      <select id="stateFilter" multiple></select>
+    </div>
+
+    <div class="section" style="--i:4">
+      <div class="section-title">Route Type</div>
+      <div class="type-filter-header">
+        <div class="type-legend">
+          <span class="chip must">MUST include</span>
+          <span class="chip can">CAN include</span>
+          <span class="chip not">NOT include</span>
+        </div>
+        <button class="btn sm" id="clearTypes">Clear</button>
+      </div>
+      <div id="typeContainer"></div>
+      <div class="type-hint">
+        <b style="color:var(--topo-green)">MUST</b> = route must have all selected &nbsp;·&nbsp;
+        <b style="color:var(--topo-blue)">CAN</b> = route needs at least one &nbsp;·&nbsp;
+        <b style="color:var(--danger)">NOT</b> = route must exclude
+      </div>
+    </div>
+
+    <div class="section" style="--i:5">
+      <div class="section-title">Rating</div>
+      <div class="range-inputs">
+        <input type="text" id="ratingMin" placeholder="Min (5.9, WI3…)">
+        <input type="text" id="ratingMax" placeholder="Max (5.12, WI6…)">
+      </div>
+    </div>
+
+    <div class="section" style="--i:6">
+      <div class="section-title">Stars</div>
+      <div class="range-inputs">
+        <input type="number" id="starsMin" placeholder="Min" step="0.5" min="0" max="5">
+        <input type="number" id="starsMax" placeholder="Max" step="0.5" min="0" max="5">
+      </div>
+    </div>
+
+    <div class="section" style="--i:7">
+      <div class="section-title">Length (ft)</div>
+      <div class="range-inputs">
+        <input type="number" id="lengthMin" placeholder="Min">
+        <input type="number" id="lengthMax" placeholder="Max">
+      </div>
+    </div>
+
+    <div class="section" style="--i:8">
+      <div class="section-title">Pitches</div>
+      <div class="range-inputs">
+        <input type="number" id="pitchesMin" placeholder="Min" min="0">
+        <input type="number" id="pitchesMax" placeholder="Max" min="0">
+      </div>
+    </div>
+
+    <div class="section" style="--i:9">
+      <div class="section-title">Color By</div>
+      <select id="vizMode">
+        <option value="rating">Rating</option>
+        <option value="length">Length</option>
+        <option value="pitches">Pitches</option>
+        <option value="stars">Stars</option>
+      </select>
+    </div>
+
+    <div class="section" style="--i:10">
+      <div class="section-title">Statistics</div>
+      <div class="stats">
+        <div class="stats-row"><span>Total Routes:</span><span class="stats-value" id="totalRoutes">0</span></div>
+        <div class="stats-row"><span>Visible:</span><span class="stats-value" id="visibleRoutes">0</span></div>
+        <div class="stats-row"><span>Map Points:</span><span class="stats-value" id="mapPoints">0</span></div>
+      </div>
+      <!-- Chart.js Canvas -->
+      <div class="chart-container">
+        <canvas id="gradeChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div id="map">
+    <div id="capNotice"></div>
+
+    <!-- Route Detail Panel -->
+    <div id="routePanel">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title" id="panelTitle">Routes</div>
+          <div class="panel-sub" id="panelSub"></div>
+        </div>
+        <button class="panel-close" id="panelClose">✕</button>
+      </div>
+      <div class="panel-controls">
+        <div class="panel-row">
+          <input type="text" id="pSearch" placeholder="Search route name…">
+        </div>
+        <div class="panel-row">
+          <select id="pSort" style="flex:1">
+            <option value="stars-desc">⭐ Stars (best first)</option>
+            <option value="stars-asc">Stars (lowest first)</option>
+            <option value="grade-desc">Grade (hardest first)</option>
+            <option value="grade-asc">Grade (easiest first)</option>
+            <option value="name-asc">Name A–Z</option>
+            <option value="length-desc">Length ↓</option>
+            <option value="pitches-desc">Pitches ↓</option>
+          </select>
+        </div>
+        <div class="panel-row" style="flex-wrap:wrap;gap:4px">
+          <span style="font-size:10px;color:var(--earth-light);font-family:'DM Mono',monospace;white-space:nowrap;align-self:center">Type:</span>
+          <div class="panel-type-chips" id="pTypeChips"></div>
+        </div>
+        <div class="panel-row">
+          <label style="font-size:10px;color:var(--earth-light);white-space:nowrap;font-family:'DM Mono',monospace">Min ★</label>
+          <input type="number" id="pMinStars" min="0" max="5" step="0.5" placeholder="0" style="width:60px;flex:none">
+          <label style="font-size:10px;color:var(--earth-light);white-space:nowrap;font-family:'DM Mono',monospace;margin-left:8px">Min Pitches</label>
+          <input type="number" id="pMinPitches" min="0" placeholder="0" style="width:60px;flex:none">
+        </div>
+      </div>
+      <div class="panel-count" id="panelCount"></div>
+      <div id="panelRouteList">
+        <div id="vsInner"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend" id="legend">
+    <div class="legend-title" id="legendTitle">Color Scale</div>
+    <div class="legend-gradient" id="legendGrad"></div>
+    <div class="legend-labels"><span id="legendMin">0</span><span id="legendMax">100</span></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     WEB WORKER SOURCE
+════════════════════════════════════════════════════════════════ -->
+<script id="worker-src" type="text/plain">
+'use strict';
+
+// ─── State ────────────────────────────────────────────────────────
+var allRoutes      = [];
+var filteredRoutes = [];
+var clusterStore   = {};   
+var clusterSeq     = 0;
+
+// ─── CSV Parsing ──────────────────────────────────────────────────
+function splitLine(line) {
+  var res = [], cur = '', inQ = false;
+  for (var i = 0; i < line.length; i++) {
+    var c = line[i];
+    if (c === '"') { inQ = !inQ; }
+    else if (c === ',' && !inQ) { res.push(cur.trim()); cur = ''; }
+    else cur += c;
+  }
+  res.push(cur.trim());
+  return res;
+}
+
+function parseCSVData(text) {
+  var nl = text.indexOf('\r') >= 0 ? '\r\n' : '\n';
+  var lines = text.split(nl);
+  if (!lines[lines.length - 1].trim()) lines.pop();
+  var headers = splitLine(lines[0]);
+  var out = [];
+  for (var i = 1; i < lines.length; i++) {
+    var ln = lines[i];
+    if (!ln.trim()) continue;
+    var vals = splitLine(ln);
+    var r = {};
+    for (var j = 0; j < headers.length; j++) r[headers[j]] = vals[j] || '';
+    precompute(r);
+    out.push(r);
+  }
+  return out;
+}
+
+// ─── Pre-compute ──────────────────────────────────────────────────
+function precompute(r) {
+  r._grade    = gradeToNum(r.Rating_Clean || r.Rating);
+  r._stars    = parseFloat(r['Avg Stars']) || 0;
+  r._length   = parseFloat(r.Length) || 0;
+  r._pitches  = parseInt(r.Pitches) || 0;
+  r._tl       = (r['Route Type'] || '').toLowerCase();
+  r._effState = getEffState(r);
+}
+
+// ─── Grade conversion ─────────────────────────────────────────────
+function gradeToNum(g) {
+  if (!g || g === '-1' || g === 'null') return -1;
+  g = g.trim();
+  var m;
+  if ((m = g.match(/5\.(\d+)([a-dA-D]?[+\-]?)/))) {
+    var n = parseInt(m[1]), s = m[2].toLowerCase();
+    if (s.indexOf('b') >= 0) n += 0.25;
+    else if (s.indexOf('c') >= 0) n += 0.5;
+    else if (s.indexOf('d') >= 0) n += 0.75;
+    if (s.indexOf('+') >= 0) n += 0.1;
+    else if (s.indexOf('-') >= 0) n -= 0.1;
+    return n;
+  }
+  if ((m = g.match(/^V(\d+)/i))) return 100 + parseInt(m[1]);
+  if ((m = g.match(/[WAB]I(\d+)/i))) return parseInt(m[1]);
+  if ((m = g.match(/\bM(\d+)/i))) return parseInt(m[1]);
+  if (/easy.?snow/i.test(g)) return 1;
+  if (/mod.?snow/i.test(g))  return 3;
+  if (/steep.?snow/i.test(g)) return 5;
+  if ((m = g.match(/class\s*([1-5])/i))) return parseInt(m[1]);
+  if (/^3rd/i.test(g)) return 3;
+  if (/^4th/i.test(g)) return 4;
+  return -1;
+}
+
+// ─── State remapping ──────────────────────────────────────────────
+function getEffState(r) {
+  return (r.State || '').toLowerCase() === 'international'
+    ? (r.Subregion_3 || r.Subregion_2 || 'International')
+    : (r.State || '');
+}
+
+function getEffField(r, field) {
+  if ((r.State || '').toLowerCase() !== 'international') return r[field] || '';
+  var remap = {
+    State: r._effState,
+    Subregion_1: r.Subregion_4 || '',
+    Subregion_2: r.Subregion_5 || '',
+    Subregion_3: r.Subregion_6 || '',
+    Subregion_4: r.Subregion_7 || '',
+    Subregion_5: '',
+    Location_Short: r.Location_Short || '',
+  };
+  return (field in remap) ? remap[field] : (r[field] || '');
+}
+
+// ─── Color ────────────────────────────────────────────────────────
+var SCHEMES = {
+  rating: ['#27ae60','#f39c12','#e74c3c'],
+  length: ['#3498db','#9b59b6','#e74c3c'],
+  pitches:['#1abc9c','#f39c12','#e67e22'],
+  stars:  ['#95a5a6','#f39c12','#f1c40f'],
+};
+
+function getColor(value, sorted, mode) {
+  if (value == null || value < 0 || !sorted.length) return '#718096';
+  var lo = 0, hi = sorted.length - 1;
+  while (lo < hi) { var mid = (lo + hi) >> 1; if (sorted[mid] < value) lo = mid + 1; else hi = mid; }
+  var norm = lo / (sorted.length - 1 || 1);
+  var cs = SCHEMES[mode] || SCHEMES.rating;
+  return norm <= 0.5 ? lerpHex(cs[0], cs[1], norm * 2) : lerpHex(cs[1], cs[2], (norm - 0.5) * 2);
+}
+
+function lerpHex(a, b, t) {
+  var p = h2r(a), q = h2r(b);
+  return r2h(~~(p[0]+(q[0]-p[0])*t), ~~(p[1]+(q[1]-p[1])*t), ~~(p[2]+(q[2]-p[2])*t));
+}
+function h2r(h) {
+  var r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h);
+  return r ? [parseInt(r[1],16),parseInt(r[2],16),parseInt(r[3],16)] : [0,0,0];
+}
+function r2h(r,g,b) { return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1); }
+
+// ─── Radius scaling ───────────────────────────────────────────────
+function calcRadius(count, minC, maxC, method, scale) {
+  if (!scale || method === 'fixed') return 7;
+  var MIN_R = 5, MAX_R = 34;
+  var norm = function(v, mn, mx) { return (v - mn) / (Math.max(mx - mn, 1)); };
+  switch (method) {
+    case 'log2':   return Math.min(MAX_R, MIN_R + Math.log2(count+1)*3.0);
+    case 'sqrt':   return MIN_R + (MAX_R-MIN_R) * norm(Math.sqrt(count), Math.sqrt(minC), Math.sqrt(maxC));
+    case 'cbrt':   return MIN_R + (MAX_R-MIN_R) * norm(Math.cbrt(count), Math.cbrt(minC), Math.cbrt(maxC));
+    case 'area':   return MIN_R + (MAX_R-MIN_R) * norm(Math.sqrt(count), Math.sqrt(minC), Math.sqrt(maxC+1));
+    case 'linear': return MIN_R + (MAX_R-MIN_R) * norm(count, minC, maxC);
+    default:       return MIN_R + (MAX_R-MIN_R) * norm(Math.sqrt(count), Math.sqrt(minC), Math.sqrt(maxC+1));
+  }
+}
+
+// ─── Stats helper ─────────────────────────────────────────────────
+function med(arr) {
+  if (!arr.length) return 0;
+  var s = arr.slice().sort(function(a,b){return a-b;}), h = s.length >> 1;
+  return s.length % 2 ? s[h] : (s[h-1] + s[h]) / 2;
+}
+
+function haversine(la1, lo1, la2, lo2) {
+  var R = 3959, dLa = (la2-la1)*Math.PI/180, dLo = (lo2-lo1)*Math.PI/180;
+  var a = Math.sin(dLa/2)*Math.sin(dLa/2) +
+          Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)*Math.sin(dLo/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ─── Filtering ────────────────────────────────────────────────────
+function doFilter(params) {
+  var selStates  = params.selStates;
+  var rMinRaw    = params.rMinRaw;
+  var rMaxRaw    = params.rMaxRaw;
+  var sMin       = params.sMin;
+  var sMax       = params.sMax;
+  var lMin       = params.lMin;
+  var lMax       = params.lMax;
+  var pMin       = params.pMin;
+  var pMax       = params.pMax;
+  var mustTypes  = params.mustTypes;
+  var canTypes   = params.canTypes;
+  var notTypes   = params.notTypes;
+
+  var hasState  = selStates.length > 0;
+  var stateSet  = {};
+  for (var si = 0; si < selStates.length; si++) stateSet[selStates[si]] = true;
+
+  var anyTF     = mustTypes.length || canTypes.length || notTypes.length;
+  var rMinN     = rMinRaw ? gradeToNum(rMinRaw) : -Infinity;
+  var rMaxN     = rMaxRaw ? gradeToNum(rMaxRaw) :  Infinity;
+  var hasRating = rMinRaw || rMaxRaw;
+  var hasSMin   = !isNaN(sMin), hasSMax = !isNaN(sMax);
+  var hasLMin   = !isNaN(lMin), hasLMax = !isNaN(lMax);
+  var hasPMin   = !isNaN(pMin), hasPMax = !isNaN(pMax);
+
+  filteredRoutes = allRoutes.filter(function(r) {
+    if (hasState && !stateSet[r._effState] && !stateSet[r.State]) return false;
+    if (anyTF) {
+      var tl = r._tl;
+      for (var i = 0; i < mustTypes.length; i++) { if (tl.indexOf(mustTypes[i]) < 0) return false; }
+      for (var i = 0; i < notTypes.length;  i++) { if (tl.indexOf(notTypes[i])  >= 0) return false; }
+      if (canTypes.length) {
+        var ok = false;
+        for (var i = 0; i < canTypes.length; i++) { if (tl.indexOf(canTypes[i]) >= 0) { ok = true; break; } }
+        if (!ok) return false;
+      }
+    }
+    if (hasRating) {
+      var g = r._grade; if (g < 0) return false;
+      if (rMinN !== -Infinity && g < rMinN) return false;
+      if (rMaxN !==  Infinity && g > rMaxN) return false;
+    }
+    if (hasSMin && r._stars   < sMin) return false;
+    if (hasSMax && r._stars   > sMax) return false;
+    if (hasLMin && r._length  < lMin) return false;
+    if (hasLMax && r._length  > lMax) return false;
+    if (hasPMin && r._pitches < pMin) return false;
+    if (hasPMax && r._pitches > pMax) return false;
+    return true;
+  });
+}
+
+function calcGradeDistribution(routes) {
+    var counts = { '≤5.7':0, '5.8':0, '5.9':0, '5.10':0, '5.11':0, '5.12':0, '5.13+':0, 'Boulder':0 };
+    for(var i=0; i<routes.length; i++) {
+        var g = routes[i]._grade;
+        if (g < 0) continue;
+        if (g >= 100) counts['Boulder']++;
+        else if (g < 8)  counts['≤5.7']++;
+        else if (g < 9)  counts['5.8']++;
+        else if (g < 10) counts['5.9']++;
+        else if (g < 11) counts['5.10']++;
+        else if (g < 12) counts['5.11']++;
+        else if (g < 13) counts['5.12']++;
+        else counts['5.13+']++;
+    }
+    return counts;
+}
+
+// ─── Aggregation helpers ──────────────────────────────────────────
+function makeAgg(routes, name, lat, lon) {
+  var id     = 'c' + (++clusterSeq);
+  var grades = routes.map(function(r){ return r._grade; }).filter(function(n){ return n > -1 && n < 100; });
+  clusterStore[id] = routes;
+  return {
+    _isAgg: true, _cid: id, _name: name,
+    'Area Latitude': lat, 'Area Longitude': lon,
+    _count:    routes.length,
+    _medGrade: med(grades),
+    _medStars: med(routes.map(function(r){ return r._stars; })),
+    _medLen:   med(routes.map(function(r){ return r._length; })),
+    _medPitch: med(routes.map(function(r){ return r._pitches; })),
+  };
+}
+
+function groupKey(r, level) {
+  var eff = getEffField(r, level);
+  if (!eff || !eff.trim()) return null;
+  return (r._effState || r.State || '?') + '|' + (getEffField(r,'Subregion_1') || '') + '|' + eff.trim();
+}
+
+function aggregateByField(routes, level) {
+  var groups = {};
+  var order  = [];
+  for (var i = 0; i < routes.length; i++) {
+    var r   = routes[i];
+    var key = groupKey(r, level);
+    if (!key) continue;
+    if (!groups[key]) { groups[key] = {name: key.split('|').pop(), routes: []}; order.push(key); }
+    groups[key].routes.push(r);
+  }
+  var result = [];
+  var hier   = ['Subregion_1','Subregion_2','Subregion_3','Subregion_4','Subregion_5','Location_Short'];
+  var start  = level.indexOf('Subregion_') === 0 ? parseInt(level.split('_')[1])
+             : level === 'State' ? 0 : hier.length;
+
+  for (var oi = 0; oi < order.length; oi++) {
+    var g   = groups[order[oi]];
+    var cur = g.routes;
+    for (var hi = start; hi < hier.length; hi++) {
+      var sub = hier[hi], cnt = {};
+      for (var ri = 0; ri < cur.length; ri++) {
+        var v = getEffField(cur[ri], sub);
+        if (v) cnt[v] = (cnt[v] || 0) + 1;
+      }
+      var ks = Object.keys(cnt);
+      if (!ks.length) break;
+      var best = ks[0];
+      for (var ki = 1; ki < ks.length; ki++) { if (cnt[ks[ki]] > cnt[best]) best = ks[ki]; }
+      cur = cur.filter(function(rr){ return getEffField(rr, sub) === best; });
+    }
+    var rep = cur[0];
+    var lat = parseFloat(rep['Area Latitude']), lon = parseFloat(rep['Area Longitude']);
+    if (!isNaN(lat) && !isNaN(lon)) result.push(makeAgg(g.routes, g.name, lat, lon));
+  }
+  return result;
+}
+
+function aggregateByProximity(routes, radius) {
+  var cellDeg = (radius / 2) / 69;
+  if (cellDeg <= 0) cellDeg = 0.01;
+  var grid = {};
+  var pts  = [];
+  for (var i = 0; i < routes.length; i++) {
+    var lat = parseFloat(routes[i]['Area Latitude']);
+    var lon = parseFloat(routes[i]['Area Longitude']);
+    if (isNaN(lat) || isNaN(lon)) continue;
+    var gx  = Math.floor(lon / cellDeg);
+    var gy  = Math.floor(lat / cellDeg);
+    var key = gx + ',' + gy;
+    if (!grid[key]) grid[key] = [];
+    var pt = {r: routes[i], lat: lat, lon: lon, gx: gx, gy: gy, done: false};
+    grid[key].push(pt);
+    pts.push(pt);
+  }
+  var clusters = [];
+  var D = 2;
+  for (var pi = 0; pi < pts.length; pi++) {
+    var seed = pts[pi];
+    if (seed.done) continue;
+    seed.done = true;
+    var grp  = [seed.r];
+    var latS = seed.lat, lonS = seed.lon;
+    for (var dx = -D; dx <= D; dx++) {
+      for (var dy = -D; dy <= D; dy++) {
+        var nb = grid[(seed.gx + dx) + ',' + (seed.gy + dy)];
+        if (!nb) continue;
+        for (var ni = 0; ni < nb.length; ni++) {
+          var candidate = nb[ni];
+          if (candidate.done) continue;
+          if (haversine(seed.lat, seed.lon, candidate.lat, candidate.lon) <= radius) {
+            candidate.done = true;
+            grp.push(candidate.r);
+            latS += candidate.lat;
+            lonS += candidate.lon;
+          }
+        }
+      }
+    }
+    clusters.push(makeAgg(grp, 'Cluster', latS / grp.length, lonS / grp.length));
+  }
+  return clusters;
+}
+
+// ─── Build GeoJSON ───────────────────────────────────────────────
+function buildAggFeatures(display, vizMode, scale, scaleMethod) {
+  function getVal(r) {
+    if (r._isAgg) {
+      if (vizMode==='rating')  return r._medGrade;
+      if (vizMode==='length')  return r._medLen;
+      if (vizMode==='pitches') return r._medPitch;
+      return r._medStars;
+    }
+    if (vizMode==='rating')  return r._grade;
+    if (vizMode==='length')  return r._length;
+    if (vizMode==='pitches') return r._pitches;
+    return r._stars;
+  }
+  var values = [], i;
+  for (i = 0; i < display.length; i++) {
+    var v = getVal(display[i]);
+    if (v != null && !isNaN(v) && v > -1) values.push(v);
+  }
+  var sortedV = values.slice().sort(function(a,b){return a-b;});
+  var aggDisplay = display.filter(function(r){return r._isAgg;});
+  var counts     = aggDisplay.length ? aggDisplay.map(function(r){return r._count;}) : [1];
+  var minC = Math.min.apply(null, counts), maxC = Math.max.apply(null, counts);
+  var features = [];
+  for (i = 0; i < display.length; i++) {
+    var r   = display[i];
+    var lat = parseFloat(r['Area Latitude']), lon = parseFloat(r['Area Longitude']);
+    if (isNaN(lat) || isNaN(lon)) continue;
+    var val   = getVal(r);
+    var color = getColor(val, sortedV, vizMode);
+    var p     = {color: color, isAgg: r._isAgg ? 'true' : 'false'};
+    if (r._isAgg) {
+      p.name   = r._name;
+      p.cid    = r._cid;
+      p.count  = r._count;
+      p.radius = calcRadius(r._count, minC, maxC, scaleMethod, scale);
+    } else {
+      p.route   = r.Route;
+      p.rating  = r.Rating;
+      p.rtype   = r['Route Type'];
+      p.stars   = r._stars;
+      p.length  = r._length || '';
+      p.pitches = r._pitches || '';
+      p.location= r.Location || '';
+      p.url     = r.URL || '';
+      p.radius  = 6;
+    }
+    features.push({type:'Feature', geometry:{type:'Point',coordinates:[lon,lat]}, properties:p});
+  }
+  return {features: features, sortedV: sortedV};
+}
+
+function buildRouteFeatures(routes, vizMode) {
+  function getVal(r) {
+    if (vizMode==='rating')  return r._grade;
+    if (vizMode==='length')  return r._length;
+    if (vizMode==='pitches') return r._pitches;
+    return r._stars;
+  }
+  var values = [], i;
+  for (i = 0; i < routes.length; i++) {
+    var v = getVal(routes[i]);
+    if (v != null && !isNaN(v) && v > -1) values.push(v);
+  }
+  var sortedV = values.slice().sort(function(a,b){return a-b;});
+  var features = [];
+  for (i = 0; i < routes.length; i++) {
+    var r   = routes[i];
+    var lat = parseFloat(r['Area Latitude']), lon = parseFloat(r['Area Longitude']);
+    if (isNaN(lat) || isNaN(lon)) continue;
+    var val   = getVal(r);
+    var color = getColor(val, sortedV, vizMode);
+    features.push({
+      type: 'Feature',
+      geometry: {type:'Point', coordinates:[lon,lat]},
+      properties: {
+        color:   color,
+        route:   r.Route   || '',
+        rating:  r.Rating  || '',
+        rtype:   r['Route Type'] || '',
+        stars:   r._stars,
+        grade:   r._grade,
+        length:  r._length  || 0,
+        pitches: r._pitches || 0,
+        location:r.Location || '',
+        url:     r.URL      || ''
+      }
+    });
+  }
+  return {features: features, sortedV: sortedV};
+}
+
+// ─── Message handler ──────────────────────────────────────────────
+self.onmessage = function(e) {
+  var data = e.data;
+
+  if (data.type === 'LOAD_CSV') {
+    allRoutes = parseCSVData(data.text);
+    var stateSet = {};
+    for (var i = 0; i < allRoutes.length; i++) {
+      var s = allRoutes[i]._effState;
+      if (s) stateSet[s] = true;
+    }
+    self.postMessage({type:'LOADED', count:allRoutes.length, states:Object.keys(stateSet).sort()});
+    return;
+  }
+
+  if (data.type === 'LOAD_JSON') {
+    allRoutes = data.json;
+    var stateSet = {};
+    for (var i = 0; i < allRoutes.length; i++) {
+      if (allRoutes[i]._grade === undefined) precompute(allRoutes[i]);
+      var s = allRoutes[i]._effState;
+      if (s) stateSet[s] = true;
+    }
+    self.postMessage({type:'LOADED', count:allRoutes.length, states:Object.keys(stateSet).sort()});
+    return;
+  }
+
+  if (data.type === 'GLOBAL_SEARCH') {
+    var q = (data.query || '').toLowerCase();
+    var results = [];
+    if (q) {
+      for (var i = 0; i < allRoutes.length; i++) {
+        if (results.length >= 20) break;
+        if ((allRoutes[i].Route || '').toLowerCase().indexOf(q) >= 0) results.push(allRoutes[i]);
+      }
+    }
+    self.postMessage({type:'SEARCH_RESULT', results:results});
+    return;
+  }
+
+  if (data.type === 'FILTER') {
+    clusterStore = {};
+    clusterSeq   = 0;
+    doFilter(data.params);
+
+    var agg    = data.aggregation;
+    var viz    = data.vizMode;
+    var scale  = data.scale;
+    var meth   = data.scaleMethod;
+    var radius = data.radius;
+    
+    var gradeCounts = calcGradeDistribution(filteredRoutes);
+
+    var result;
+    if (agg === 'route') {
+      var built  = buildRouteFeatures(filteredRoutes, viz);
+      result = { type: 'FILTER_RESULT', mode: 'route', features: built.features, sortedV: built.sortedV, filteredCount: filteredRoutes.length, totalCount: allRoutes.length, gradeCounts: gradeCounts };
+    } else {
+      var display = agg === 'proximity' ? aggregateByProximity(filteredRoutes, radius) : aggregateByField(filteredRoutes, agg);
+      var built2  = buildAggFeatures(display, viz, scale, meth);
+      result = { type: 'FILTER_RESULT', mode: 'agg', features: built2.features, sortedV: built2.sortedV, filteredCount: filteredRoutes.length, totalCount: allRoutes.length, gradeCounts: gradeCounts };
+    }
+    self.postMessage(result);
+    return;
+  }
+
+  if (data.type === 'GET_ROUTES') {
+    self.postMessage({type:'ROUTES_RESULT', routes: clusterStore[data.cid] || [], title:data.title, sub:data.sub});
+    return;
+  }
+};
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MAIN THREAD
+════════════════════════════════════════════════════════════════ -->
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiaG91Y2siLCJhIjoiY203bnlkZ3N3MDZrYjJqb2xtNTZtcmI5NiJ9.rVHwrrR0m3YO1DvvekByTg';
+
+var workerSrc  = document.getElementById('worker-src').textContent;
+var workerBlob = new Blob([workerSrc], {type:'text/javascript'});
+var worker     = new Worker(URL.createObjectURL(workerBlob));
+
+const ROUTE_TYPES = [
+  {id:'Trad',label:'Trad'},{id:'Sport',label:'Sport'},{id:'TR',label:'Top Rope'},
+  {id:'Boulder',label:'Boulder'},{id:'Alpine',label:'Alpine'},{id:'Ice',label:'Ice'},
+  {id:'Mixed',label:'Mixed'},{id:'Snow',label:'Snow'},{id:'Aid',label:'Aid'}
+];
+const ITEM_H = 82;  
+
+let map;
+let mapReady      = false;
+let dataLoaded    = false;
+let pendingResult = null;   
+let filterTimer   = null;
+let searchTimer   = null;
+let vsRoutes      = [];
+let vsScrollFn    = null;
+let pActiveType   = null;
+let typeState     = {};
+let gradeChart    = null;
+
+ROUTE_TYPES.forEach(t => typeState[t.id] = null);
+
+worker.onmessage = ({data}) => {
+  switch (data.type) {
+    case 'LOADED':       onWorkerLoaded(data);   break;
+    case 'FILTER_RESULT':onFilterResult(data);   break;
+    case 'ROUTES_RESULT':onRoutesResult(data);   break;
+    case 'SEARCH_RESULT':onSearchResult(data);   break;
+  }
+};
+
+function onWorkerLoaded(data) {
+  dataLoaded = true;
+
+  const sel = document.getElementById('stateFilter');
+  sel.innerHTML = data.states.map(s => `<option value="${s}">${s}</option>`).join('');
+
+  document.getElementById('totalRoutes').textContent  = data.count.toLocaleString();
+  
+  // Hide loading section and show controls
+  const ls = document.getElementById('loadingSection');
+  if (ls) ls.style.display = 'none';
+  const cs = document.getElementById('controlsSection');
+  if (cs) cs.style.display = 'block';
+
+  readURLState(); // Restore state from URL immediately on load
+  scheduleFilter();
+}
+
+function initChart() {
+    const ctx = document.getElementById('gradeChart').getContext('2d');
+    gradeChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'Routes', data: [], backgroundColor: '#3498db', borderRadius: 3 }] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:9} } },
+                x: { grid: { display: false }, ticks: { color: '#718096', font:{family:"'DM Mono',monospace", size:9} } }
+            },
+            plugins: { legend: { display: false }, tooltip: {titleFont:{family:"'Chakra Petch'"}, bodyFont:{family:"'DM Mono'"}} }
+        }
+    });
+}
+
+function onFilterResult(data) {
+  document.getElementById('visibleRoutes').textContent = data.filteredCount.toLocaleString();
+  document.getElementById('totalRoutes').textContent   = data.totalCount.toLocaleString();
+
+  if (gradeChart && data.gradeCounts) {
+      gradeChart.data.labels = Object.keys(data.gradeCounts);
+      gradeChart.data.datasets[0].data = Object.values(data.gradeCounts);
+      gradeChart.update();
+  }
+
+  if (!mapReady) { pendingResult = data; return; }
+  applyMapResult(data);
+}
+
+function onRoutesResult(data) {
+  openPanel(data.routes, data.title, data.sub);
+}
+
+// ── Global Search Handling ──
+document.getElementById('globalSearchInput').addEventListener('input', (e) => {
+    if (searchTimer) clearTimeout(searchTimer);
+    const val = e.target.value;
+    if (!val.trim()) {
+        document.getElementById('globalSearchDropdown').style.display = 'none';
+        return;
+    }
+    searchTimer = setTimeout(() => {
+        worker.postMessage({ type: 'GLOBAL_SEARCH', query: val });
+    }, 250);
+});
+
+function onSearchResult(data) {
+    const box = document.getElementById('globalSearchDropdown');
+    box.innerHTML = '';
+    if (!data.results.length) {
+        box.style.display = 'none';
+        return;
+    }
+    data.results.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'search-item';
+        div.innerHTML = `<div class="si-name">${esc(r.Route)} <span style="font-size:10px;color:var(--accent);margin-left:5px">${esc(r.Rating)}</span></div>
+                         <div class="si-loc">${esc(r.Location_Short || r.Location || '')}</div>`;
+        div.addEventListener('click', () => {
+            box.style.display = 'none';
+            document.getElementById('globalSearchInput').value = '';
+            map.flyTo({ center: [parseFloat(r['Area Longitude']), parseFloat(r['Area Latitude'])], zoom: 15 });
+            showPopup([parseFloat(r['Area Longitude']), parseFloat(r['Area Latitude'])], {
+                route: r.Route, rating: r.Rating, rtype: r['Route Type'], stars: r._stars, length: r._length, pitches: r._pitches, location: r.Location, url: r.URL
+            });
+        });
+        box.appendChild(div);
+    });
+    box.style.display = 'block';
+}
+
+function applyMapResult(data) {
+  const isRoute = data.mode === 'route';
+  const showHeatmap = document.getElementById('toggleHeatmap').checked;
+  const fc = {type:'FeatureCollection', features: data.features};
+
+  // Toggle layer visibility
+  const nativeLayers = ['routes-clusters','routes-count','routes-unclustered'];
+  const aggLayers    = ['route-circles'];
+  
+  nativeLayers.forEach(id => {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', (isRoute && !showHeatmap) ? 'visible' : 'none');
+  });
+  if (map.getLayer('routes-heatmap')) {
+    map.setLayoutProperty('routes-heatmap', 'visibility', (isRoute && showHeatmap) ? 'visible' : 'none');
+  }
+  aggLayers.forEach(id => {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', (!isRoute) ? 'visible' : 'none');
+  });
+
+  if (isRoute) {
+    map.getSource('routes-native').setData(fc);
+    document.getElementById('mapPoints').textContent  = data.filteredCount.toLocaleString();
+    document.getElementById('capNotice').style.display = 'none';
+  } else {
+    map.getSource('routes').setData(fc);
+    document.getElementById('mapPoints').textContent  = data.features.length.toLocaleString();
+    document.getElementById('capNotice').style.display = 'none';
+  }
+
+  updateLegend(document.getElementById('vizMode').value, data.sortedV);
+
+  if (data.features.length > 0) {
+    const b = new mapboxgl.LngLatBounds();
+    data.features.forEach(f => b.extend(f.geometry.coordinates));
+    map.fitBounds(b, {padding: isRoute ? 40 : 70, maxZoom: 13, duration: 500});
+  }
+}
+
+function initMap() {
+  map = new mapboxgl.Map({
+    container: 'map',
+    style: document.getElementById('mapStyle').value || 'mapbox://styles/mapbox/outdoors-v12',
+    center: [-105, 42], zoom: 4
+  });
+  map.addControl(new mapboxgl.NavigationControl(), 'top-left');
+  
+  // Geolocation feature ("Find climbs near me")
+  map.addControl(new mapboxgl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      trackUserLocation: true,
+      showUserHeading: true
+  }), 'top-left');
+
+  map.on('load', setupLayers);
+}
+
+function setupLayers() {
+  // 3D Terrain & Sky Feature
+  if (!map.getSource('mapbox-dem')) {
+    map.addSource('mapbox-dem', { 'type': 'raster-dem', 'url': 'mapbox://mapbox.mapbox-terrain-dem-v1', 'tileSize': 512, 'maxzoom': 14 });
+    map.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+  }
+  if (!map.getLayer('sky')) {
+    map.addLayer({
+        'id': 'sky', 'type': 'sky',
+        'paint': { 'sky-type': 'atmosphere', 'sky-atmosphere-sun': [0.0, 0.0], 'sky-atmosphere-sun-intensity': 15 }
+    });
+  }
+
+  // Source 1: aggregated modes
+  if (!map.getSource('routes')) {
+    map.addSource('routes', {type:'geojson', data:{type:'FeatureCollection',features:[]}});
+  }
+  if (!map.getLayer('route-circles')) {
+    map.addLayer({
+      id:'route-circles', type:'circle', source:'routes',
+      paint:{
+        'circle-radius':       ['get','radius'],
+        'circle-color':        ['get','color'],
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#ffffff',
+        'circle-opacity':      0.87
+      }
+    });
+  }
+
+  // Source 2: individual route mode
+  if (!map.getSource('routes-native')) {
+    map.addSource('routes-native', {
+      type: 'geojson', data: {type:'FeatureCollection', features:[]},
+      cluster: true, clusterMaxZoom:14, clusterRadius: 50
+    });
+  }
+
+  // Heatmap Layer Feature
+  if (!map.getLayer('routes-heatmap')) {
+    map.addLayer({
+        id: 'routes-heatmap', type: 'heatmap', source: 'routes-native',
+        paint: {
+            'heatmap-weight': 1,
+            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 14, 3],
+            'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(33,102,172,0)', 0.2, 'rgb(103,169,207)', 0.4, 'rgb(209,229,240)', 0.6, 'rgb(253,219,199)', 0.8, 'rgb(239,138,98)', 1, 'rgb(178,24,43)'],
+            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 3, 14, 25],
+            'heatmap-opacity': 0.8
+        },
+        layout: { visibility: 'none' }
+    }, 'waterway-label'); // placing heatmap below labels ideally
+  }
+
+  if (!map.getLayer('routes-clusters')) {
+    map.addLayer({
+      id:'routes-clusters', type:'circle', source:'routes-native',
+      filter: ['has','point_count'],
+      paint: {
+        'circle-color': [ 'step', ['get','point_count'], '#27ae60', 10, '#f39c12', 100, '#e74c3c', 500, '#8e44ad' ],
+        'circle-radius': ['step', ['get','point_count'], 15, 10, 20, 100, 26, 500, 34],
+        'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.85
+      },
+      layout: {visibility:'none'}
+    });
+  }
+
+  if (!map.getLayer('routes-count')) {
+    map.addLayer({
+      id:'routes-count', type:'symbol', source:'routes-native',
+      filter: ['has','point_count'],
+      layout: { 'text-field': ['get','point_count_abbreviated'], 'text-font':  ['DIN Offc Pro Medium','Arial Unicode MS Bold'], 'text-size':  12, 'visibility': 'none'},
+      paint: {'text-color':'#ffffff'}
+    });
+  }
+
+  if (!map.getLayer('routes-unclustered')) {
+    map.addLayer({
+      id:'routes-unclustered', type:'circle', source:'routes-native',
+      filter: ['!',['has','point_count']],
+      paint: { 'circle-radius': 6, 'circle-color': ['get','color'], 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.87 },
+      layout: {visibility:'none'}
+    });
+  }
+
+  map.on('click','route-circles',      handleAggClick);
+  map.on('click','routes-clusters',    handleNativeClusterClick);
+  map.on('click','routes-unclustered', handleUnclusteredClick);
+
+  ['route-circles','routes-clusters','routes-unclustered'].forEach(id => {
+    map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', id, () => map.getCanvas().style.cursor = '');
+  });
+
+  mapReady = true;
+  if (pendingResult) { applyMapResult(pendingResult); pendingResult = null; }
+}
+
+function handleAggClick(e) {
+  const p = e.features[0].properties;
+  const coords = e.features[0].geometry.coordinates.slice();
+  if (p.isAgg === 'true') worker.postMessage({ type: 'GET_ROUTES', cid: p.cid, title: p.name, sub: `${Number(p.count).toLocaleString()} routes` });
+  else showPopup(coords, p);
+}
+
+function handleNativeClusterClick(e) {
+  const f = e.features[0], clusterId = f.properties.cluster_id, count = f.properties.point_count;
+  map.getSource('routes-native').getClusterLeaves(clusterId, Infinity, 0, (err, leaves) => {
+    if (err) return;
+    const routes = leaves.map(lf => {
+      const p = lf.properties;
+      return {
+        Route: p.route || '', Rating: p.rating || '', Rating_Clean: p.rating || '', 'Route Type': p.rtype || '',
+        'Avg Stars': String(p.stars || 0), _stars: typeof p.stars === 'number' ? p.stars : parseFloat(p.stars) || 0,
+        _grade: typeof p.grade === 'number' ? p.grade : parseFloat(p.grade) || -1,
+        _length: typeof p.length === 'number' ? p.length : parseFloat(p.length) || 0,
+        _pitches: typeof p.pitches === 'number' ? p.pitches : parseInt(p.pitches) || 0,
+        Location: p.location || '', URL: p.url || ''
+      };
+    });
+    openPanel(routes, 'Routes in Area', `${count.toLocaleString()} routes`);
+  });
+}
+
+function handleUnclusteredClick(e) {
+  showPopup(e.features[0].geometry.coordinates.slice(), e.features[0].properties);
+}
+
+function showPopup(coords, p) {
+  const loc = (p.location || '').replace(/>/g,' › ');
+  new mapboxgl.Popup().setLngLat(coords).setHTML(`
+    <div class="popup-title">${esc(p.route || 'Unknown')}</div>
+    <div class="popup-detail"><span class="popup-label">Rating:</span><span class="popup-value">${p.rating||'—'}</span></div>
+    <div class="popup-detail"><span class="popup-label">Type:</span><span class="popup-value">${p.rtype||'—'}</span></div>
+    <div class="popup-detail"><span class="popup-label">Stars:</span><span class="popup-value">${p.stars||'—'}</span></div>
+    <div class="popup-detail"><span class="popup-label">Length:</span><span class="popup-value">${p.length ? p.length+' ft' : '—'}</span></div>
+    <div class="popup-detail"><span class="popup-label">Pitches:</span><span class="popup-value">${p.pitches||'—'}</span></div>
+    <div class="popup-detail" style="flex-direction:column;gap:3px">
+      <span class="popup-label">Location:</span><span class="popup-value" style="font-size:10px;line-height:1.4">${esc(loc)}</span>
+    </div>
+    ${p.url ? `<a href="${p.url}" target="_blank" class="popup-link">Mountain Project →</a>` : ''}
+  `).addTo(map);
+}
+
+function buildTypeUI() {
+  const c = document.getElementById('typeContainer');
+  c.innerHTML = '';
+  ROUTE_TYPES.forEach(({id, label}) => {
+    const row = document.createElement('div');
+    row.className = 'type-row';
+    row.id = `tr-${id}`;
+    row.innerHTML = `<span class="type-name">${label}</span>
+      <div class="type-btns">
+        <button class="tbtn must" data-id="${id}" data-m="must">Must</button>
+        <button class="tbtn can"  data-id="${id}" data-m="can">Can</button>
+        <button class="tbtn not"  data-id="${id}" data-m="not">Not</button>
+      </div>`;
+    c.appendChild(row);
+    row.querySelectorAll('.tbtn').forEach(btn => btn.addEventListener('click', () => {
+      const tid = btn.dataset.id, m = btn.dataset.m;
+      typeState[tid] = (typeState[tid] === m) ? null : m;
+      if (tid === 'Boulder' && (m==='must'||m==='can') && typeState[tid]===m) {
+        ROUTE_TYPES.forEach(t => { if (t.id!=='Boulder' && (typeState[t.id]==='must'||typeState[t.id]==='can')) typeState[t.id]=null; });
+      } else if (tid !== 'Boulder' && (m==='must'||m==='can') && typeState[tid]===m) {
+        if (typeState['Boulder']==='must'||typeState['Boulder']==='can') typeState['Boulder']=null;
+      }
+      syncTypeUI();
+      scheduleFilter();
+    }));
+  });
+}
+
+function syncTypeUI() {
+  ROUTE_TYPES.forEach(({id}) => {
+    const s = typeState[id];
+    const row = document.getElementById(`tr-${id}`);
+    if (!row) return;
+    row.className = `type-row${s ? ' s-'+s : ''}`;
+    row.querySelectorAll('.tbtn').forEach(b => b.classList.toggle('active', b.dataset.m === s));
+  });
+}
+
+// URL State Read
+function readURLState() {
+    if (!window.location.hash) return;
+    try {
+        const state = JSON.parse(decodeURIComponent(window.location.hash.substring(1)));
+        
+        // Restore Inputs
+        if(state.mapStyle) document.getElementById('mapStyle').value = state.mapStyle;
+        if(state.heatmap) document.getElementById('toggleHeatmap').checked = state.heatmap;
+        if(state.aggregation) {
+            document.getElementById('aggregationLevel').value = state.aggregation;
+            document.getElementById('radiusGroup').style.display = state.aggregation === 'proximity' ? 'block' : 'none';
+        }
+        if(state.radius) document.getElementById('proximityRadius').value = state.radius;
+        if(state.vizMode) document.getElementById('vizMode').value = state.vizMode;
+        if(state.scale !== undefined) {
+            document.getElementById('scaleDots').checked = state.scale;
+            document.getElementById('scaleMethodGroup').style.display = state.scale ? 'block' : 'none';
+        }
+        if(state.scaleMethod) document.getElementById('scaleMethod').value = state.scaleMethod;
+        
+        const p = state.params;
+        if (p) {
+            document.getElementById('ratingMin').value = p.rMinRaw || '';
+            document.getElementById('ratingMax').value = p.rMaxRaw || '';
+            document.getElementById('starsMin').value = isNaN(p.sMin) ? '' : p.sMin;
+            document.getElementById('starsMax').value = isNaN(p.sMax) ? '' : p.sMax;
+            document.getElementById('lengthMin').value = isNaN(p.lMin) ? '' : p.lMin;
+            document.getElementById('lengthMax').value = isNaN(p.lMax) ? '' : p.lMax;
+            document.getElementById('pitchesMin').value = isNaN(p.pMin) ? '' : p.pMin;
+            document.getElementById('pitchesMax').value = isNaN(p.pMax) ? '' : p.pMax;
+            
+            if(p.selStates) {
+                const sel = document.getElementById('stateFilter');
+                Array.from(sel.options).forEach(opt => opt.selected = p.selStates.includes(opt.value));
+            }
+
+            // Restore type state
+            ROUTE_TYPES.forEach(t => typeState[t.id] = null);
+            if(p.mustTypes) p.mustTypes.forEach(tid => { const found = ROUTE_TYPES.find(t=>t.id.toLowerCase()===tid); if(found) typeState[found.id] = 'must'; });
+            if(p.canTypes) p.canTypes.forEach(tid => { const found = ROUTE_TYPES.find(t=>t.id.toLowerCase()===tid); if(found) typeState[found.id] = 'can'; });
+            if(p.notTypes) p.notTypes.forEach(tid => { const found = ROUTE_TYPES.find(t=>t.id.toLowerCase()===tid); if(found) typeState[found.id] = 'not'; });
+            syncTypeUI();
+        }
+    } catch(e) { console.error("URL state parsing failed", e); }
+}
+
+function scheduleFilter() {
+  if (filterTimer) clearTimeout(filterTimer);
+  filterTimer = setTimeout(sendFilter, 350);
+}
+
+function sendFilter() {
+  if (!dataLoaded) return;
+
+  const selStates  = Array.from(document.getElementById('stateFilter').selectedOptions).map(o => o.value);
+  const rMinRaw    = document.getElementById('ratingMin').value.trim();
+  const rMaxRaw    = document.getElementById('ratingMax').value.trim();
+  const sMin       = parseFloat(document.getElementById('starsMin').value);
+  const sMax       = parseFloat(document.getElementById('starsMax').value);
+  const lMin       = parseFloat(document.getElementById('lengthMin').value);
+  const lMax       = parseFloat(document.getElementById('lengthMax').value);
+  const pMin       = parseInt(document.getElementById('pitchesMin').value);
+  const pMax       = parseInt(document.getElementById('pitchesMax').value);
+  const mustTypes  = ROUTE_TYPES.filter(t => typeState[t.id]==='must').map(t => t.id.toLowerCase());
+  const canTypes   = ROUTE_TYPES.filter(t => typeState[t.id]==='can').map(t => t.id.toLowerCase());
+  const notTypes   = ROUTE_TYPES.filter(t => typeState[t.id]==='not').map(t => t.id.toLowerCase());
+
+  const payload = {
+    params: { selStates, rMinRaw, rMaxRaw, sMin, sMax, lMin, lMax, pMin, pMax, mustTypes, canTypes, notTypes },
+    aggregation: document.getElementById('aggregationLevel').value,
+    radius:      parseFloat(document.getElementById('proximityRadius').value) || 50,
+    vizMode:     document.getElementById('vizMode').value,
+    scale:       document.getElementById('scaleDots').checked,
+    scaleMethod: document.getElementById('scaleMethod').value
+  };
+
+  // URL State Feature Saving
+  const fullState = {
+      ...payload, 
+      mapStyle: document.getElementById('mapStyle').value,
+      heatmap: document.getElementById('toggleHeatmap').checked
+  };
+  window.history.replaceState(null, '', '#' + encodeURIComponent(JSON.stringify(fullState)));
+
+  worker.postMessage({ type: 'FILTER', ...payload });
+}
+
+function updateLegend(mode, sorted) {
+  const T = {rating:'Grade', length:'Length (ft)', pitches:'Pitches', stars:'Stars'};
+  document.getElementById('legendTitle').textContent = T[mode] || 'Color Scale';
+  if (!sorted || !sorted.length) return;
+  const mn = sorted[0], mx = sorted[sorted.length-1];
+  const cs = SCHEMES[mode] || SCHEMES.rating;
+  document.getElementById('legendGrad').style.background = `linear-gradient(to right,${cs[0]},${cs[1]},${cs[2]})`;
+  const fmt = v => mode==='rating' ? (v>=100 ? `V${v-100}` : `5.${Math.round(v)}`) : Math.round(v);
+  document.getElementById('legendMin').textContent = fmt(mn);
+  document.getElementById('legendMax').textContent = fmt(mx);
+}
+
+function resetFilters() {
+  ['ratingMin','ratingMax','starsMin','starsMax','lengthMin','lengthMax','pitchesMin','pitchesMax'].forEach(id => document.getElementById(id).value = '');
+  const sel = document.getElementById('stateFilter');
+  for (let i = 0; i < sel.options.length; i++) sel.options[i].selected = false;
+  ROUTE_TYPES.forEach(t => typeState[t.id] = null); syncTypeUI();
+  document.getElementById('aggregationLevel').value = 'route';
+  document.getElementById('radiusGroup').style.display = 'none';
+  document.getElementById('scaleDots').checked = true;
+  document.getElementById('scaleMethodGroup').style.display = 'block';
+  closePanel();
+  scheduleFilter();
+}
+
+function openPanel(routes, title, sub) {
+  document.getElementById('panelTitle').textContent = title;
+  document.getElementById('panelSub').textContent   = sub;
+  document.getElementById('pSearch').value    = '';
+  document.getElementById('pMinStars').value  = '';
+  document.getElementById('pMinPitches').value= '';
+  document.getElementById('pSort').value      = 'stars-desc';
+  pActiveType = null;
+
+  const typeSet = new Set();
+  for (const r of routes) (r['Route Type']||'').split(',').forEach(t => { const s=t.trim(); if(s) typeSet.add(s); });
+  const chips = document.getElementById('pTypeChips');
+  chips.innerHTML = '';
+  ['All',...[...typeSet].sort()].forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'pchip' + (t==='All' ? ' active' : '');
+    b.textContent = t;
+    b.addEventListener('click', () => {
+      chips.querySelectorAll('.pchip').forEach(c => c.classList.remove('active'));
+      b.classList.add('active');
+      pActiveType = t==='All' ? null : t;
+      refreshPanel();
+    });
+    chips.appendChild(b);
+  });
+  vsRoutes = routes; refreshPanel();
+  document.getElementById('routePanel').classList.add('open');
+}
+
+function refreshPanel() {
+  const search = document.getElementById('pSearch').value.toLowerCase(), sort = document.getElementById('pSort').value, minSt = parseFloat(document.getElementById('pMinStars').value), minPit = parseInt(document.getElementById('pMinPitches').value);
+  let routes = vsRoutes;
+  if (search) routes = routes.filter(r => (r.Route||'').toLowerCase().includes(search));
+  if (!isNaN(minSt) && minSt>0) routes = routes.filter(r => r._stars >= minSt);
+  if (!isNaN(minPit) && minPit>0) routes = routes.filter(r => r._pitches >= minPit);
+  if (pActiveType) routes = routes.filter(r => (r['Route Type']||'').includes(pActiveType));
+  const sorted = [...routes];
+  switch (sort) {
+    case 'stars-desc': sorted.sort((a,b) => b._stars - a._stars); break;
+    case 'stars-asc': sorted.sort((a,b) => a._stars - b._stars); break;
+    case 'grade-desc': sorted.sort((a,b) => b._grade - a._grade); break;
+    case 'grade-asc': sorted.sort((a,b) => a._grade - b._grade); break;
+    case 'name-asc': sorted.sort((a,b) => (a.Route||'').localeCompare(b.Route||'')); break;
+    case 'length-desc': sorted.sort((a,b) => b._length - a._length); break;
+    case 'pitches-desc': sorted.sort((a,b) => b._pitches - a._pitches); break;
+  }
+  document.getElementById('panelCount').textContent = `${sorted.length.toLocaleString()} routes`;
+  renderVS(sorted);
+}
+
+function renderVS(routes) {
+  const container = document.getElementById('panelRouteList'), inner = document.getElementById('vsInner');
+  if (routes.length === 0) {
+    inner.style.height = '0';
+    inner.innerHTML = '<div class="no-routes">No routes match your filters.</div>';
+    if (vsScrollFn) { container.removeEventListener('scroll', vsScrollFn); vsScrollFn = null; }
+    return;
+  }
+  inner.style.height = `${routes.length * ITEM_H}px`;
+  inner.innerHTML = '';
+  const paint = () => {
+    const st = container.scrollTop, vh = container.clientHeight || 480;
+    const s = Math.max(0, Math.floor(st / ITEM_H) - 4), e = Math.min(routes.length - 1, Math.ceil((st + vh) / ITEM_H) + 4);
+    inner.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for (let i = s; i <= e; i++) frag.appendChild(makeCard(routes[i], i));
+    inner.appendChild(frag);
+  };
+  paint();
+  container.removeEventListener('scroll', vsScrollFn);
+  vsScrollFn = paint;
+  container.addEventListener('scroll', vsScrollFn, {passive:true});
+  container.scrollTop = 0;
+}
+
+function makeCard(r, idx) {
+  const div = document.createElement('div');
+  div.className = 'route-card';
+  div.style.cssText = `top:${idx * ITEM_H}px;height:${ITEM_H}px`;
+  const sn = r._stars || 0, ss = '★'.repeat(Math.round(sn)) + '☆'.repeat(Math.max(0, 4 - Math.round(sn))), grade = r.Rating || r.Rating_Clean || '—', len = r._length ? `${~~r._length}ft` : '', pit = r._pitches ? `${r._pitches}p` : '';
+  const types = (r['Route Type']||'').split(',').map(t => t.trim()).filter(Boolean);
+  div.innerHTML = `
+    <div class="rc-name" title="${esc(r.Route||'')}">${esc(r.Route||'Unknown')}</div>
+    <div class="rc-meta"><span>${esc(grade)}</span><span class="rc-stars">${ss} ${sn.toFixed(1)}</span>${len ? `<span>${len}</span>` : ''}${pit ? `<span>${pit}</span>` : ''}</div>
+    <div class="rc-tags">${types.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>`;
+  div.addEventListener('click', () => { if (r.URL) window.open(r.URL, '_blank'); });
+  return div;
+}
+
+function closePanel() { document.getElementById('routePanel').classList.remove('open'); }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function fetchInitialData() {
+    const st = document.getElementById('loadStatusText');
+    if(st) st.textContent = 'Downloading compressed data (~15MB)...';
+
+    // Fetch the tiny .zip file instead of the massive .json file
+    fetch('routes.zip')
+        .then(response => {
+            if (!response.ok) throw new Error("Network response was not ok");
+            return response.arrayBuffer(); // Download as raw binary data
+        })
+        .then(buffer => {
+            if(st) st.textContent = 'Unzipping data in browser...';
+            
+            // Unzip the file in memory using fflate
+            const unzipped = fflate.unzipSync(new Uint8Array(buffer));
+            
+            // Get the first file inside the zip (your json file)
+            const filename = Object.keys(unzipped)[0]; 
+            const jsonString = fflate.strFromU8(unzipped[filename]);
+            
+            if(st) st.textContent = 'Processing map data...';
+            
+            // Turn it back into Javascript objects and send to worker
+            const json = JSON.parse(jsonString);
+            worker.postMessage({type:'LOAD_JSON', json: json});
+        })
+        .catch(err => {
+            if(st) st.textContent = 'Error loading data. Make sure routes.zip is uploaded next to index.html.';
+            console.error('Fetch error:', err);
+        });
+}
+
+const $ = id => document.getElementById(id);
+
+$('resetBtn').addEventListener('click', resetFilters);
+$('clearTypes').addEventListener('click', () => { ROUTE_TYPES.forEach(t => typeState[t.id]=null); syncTypeUI(); scheduleFilter(); });
+
+$('aggregationLevel').addEventListener('change', e => { $('radiusGroup').style.display = e.target.value==='proximity' ? 'block' : 'none'; scheduleFilter(); });
+$('proximityRadius').addEventListener('input',  scheduleFilter);
+$('scaleDots').addEventListener('change', e => { $('scaleMethodGroup').style.display = e.target.checked ? 'block' : 'none'; scheduleFilter(); });
+$('scaleMethod').addEventListener('change', scheduleFilter);
+$('stateFilter').addEventListener('change', scheduleFilter);
+$('vizMode').addEventListener('change', scheduleFilter);
+$('toggleHeatmap').addEventListener('change', () => {
+    scheduleFilter(); // Re-runs applyMapResult which toggles Heatmap vs Cluster visibility
+});
+
+['ratingMin','ratingMax','starsMin','starsMax','lengthMin','lengthMax','pitchesMin','pitchesMax'].forEach(id => $(id).addEventListener('input', scheduleFilter));
+
+$('mapStyle').addEventListener('change', e => {
+  map.setStyle(e.target.value);
+  map.once('style.load', setupLayers);
+  scheduleFilter(); // save to URL state
+});
+
+$('panelClose').addEventListener('click', closePanel);
+$('pSearch').addEventListener('input', refreshPanel);
+$('pSort').addEventListener('change', refreshPanel);
+$('pMinStars').addEventListener('input', refreshPanel);
+$('pMinPitches').addEventListener('input',refreshPanel);
+
+buildTypeUI();
+initChart();
+initMap();
+fetchInitialData();
+</script>
+</body>
+</html>
