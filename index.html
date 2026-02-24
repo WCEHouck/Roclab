@@ -345,9 +345,153 @@
         ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
         
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+        /* ═══════════════════════════════════
+           MOBILE OVERLAY BACKDROP
+        ═══════════════════════════════════ */
+        #mobileBackdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 90;
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
+            animation: fadeInBackdrop 0.25s ease forwards;
+        }
+        #mobileBackdrop.active { display: block; }
+        @keyframes fadeInBackdrop { from { opacity: 0; } to { opacity: 1; } }
+
+        /* ═══════════════════════════════════
+           HAMBURGER FAB BUTTON
+        ═══════════════════════════════════ */
+        #sidebarToggle {
+            display: none; /* hidden on desktop */
+            position: fixed;
+            bottom: 24px;
+            left: 16px;
+            z-index: 200;
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--topo-blue), var(--topo-green));
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(14, 165, 233, 0.45);
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 4px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        #sidebarToggle:active { transform: scale(0.93); }
+        #sidebarToggle .bar {
+            width: 20px; height: 2px;
+            background: #fff;
+            border-radius: 2px;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            transform-origin: center;
+        }
+        /* Animate bars to X when open */
+        #sidebarToggle.open .bar:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+        #sidebarToggle.open .bar:nth-child(2) { opacity: 0; transform: scaleX(0); }
+        #sidebarToggle.open .bar:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+        /* ═══════════════════════════════════
+           MOBILE BREAKPOINT
+        ═══════════════════════════════════ */
+        @media (max-width: 768px) {
+
+            /* Show the hamburger FAB */
+            #sidebarToggle { display: flex; }
+
+            /* Sidebar becomes a left-side overlay drawer */
+            #sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                bottom: 0;
+                width: min(340px, 90vw);
+                z-index: 100;
+                transform: translateX(-105%);
+                transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+                border-right: 1px solid var(--border-highlight);
+                box-shadow: 8px 0 32px rgba(0,0,0,0.6);
+            }
+            #sidebar.mobile-open {
+                transform: translateX(0);
+            }
+
+            /* Map fills the full screen */
+            #container { flex-direction: column; }
+            #map { flex: 1; width: 100vw; height: 100vh; }
+
+            /* Legend repositioned so it doesn't overlap the FAB */
+            .legend {
+                bottom: 88px;
+                right: 12px;
+                padding: 12px;
+                min-width: 160px;
+                font-size: 11px;
+            }
+
+            /* Route Panel → bottom sheet */
+            #routePanel {
+                top: auto;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                width: 100%;
+                height: 82vh;
+                border-left: none;
+                border-top: 1px solid var(--border-highlight);
+                border-radius: 20px 20px 0 0;
+                transform: translateY(110%);
+                transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+                box-shadow: 0 -10px 40px rgba(0,0,0,0.6);
+            }
+            #routePanel.open {
+                transform: translateY(0);
+            }
+
+            /* Drag handle affordance on bottom sheet */
+            #routePanel::before {
+                content: '';
+                display: block;
+                width: 36px;
+                height: 4px;
+                background: rgba(255,255,255,0.2);
+                border-radius: 2px;
+                margin: 10px auto 0;
+                flex-shrink: 0;
+            }
+
+            /* Tighten the panel header on mobile */
+            .panel-header { padding: 12px 16px 12px; }
+            .panel-title { font-size: 16px; }
+            .panel-controls { padding: 10px 16px; gap: 8px; }
+            .panel-count { padding: 6px 16px; }
+            #clusterStats { padding: 12px 16px; }
+
+            /* Capnotice shouldn't overlap toggle */
+            #capNotice { bottom: 84px; top: auto; left: 50%; transform: translateX(-50%); }
+
+            /* Make mapbox controls not overlap FAB */
+            .mapboxgl-ctrl-bottom-left { bottom: 80px !important; }
+        }
     </style>
 </head>
 <body>
+<!-- Mobile sidebar backdrop -->
+<div id="mobileBackdrop"></div>
+
+<!-- Mobile sidebar toggle FAB -->
+<button id="sidebarToggle" aria-label="Toggle filters">
+  <span class="bar"></span>
+  <span class="bar"></span>
+  <span class="bar"></span>
+</button>
+
 <div id="container">
 
   <div id="sidebar">
@@ -411,6 +555,13 @@
           <option value="linear">Linear — max contrast</option>
           <option value="fixed">Fixed Size</option>
         </select>
+      <div class="filter-group" id="clusterFilterGroup" style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-light);">
+          <label class="filter-label">Cluster Size (Routes)</label>
+          <div class="range-inputs">
+            <input type="number" id="clusterMin" placeholder="Min (e.g. 10)">
+            <input type="number" id="clusterMax" placeholder="Max (e.g. 500)">
+          </div>
+        </div>  
       </div>
     </div>
 
@@ -612,6 +763,7 @@ function parseCSVData(text) {
 }
 
 function precompute(r) {
+  // Use Rating_Clean if available, otherwise fallback to Rating
   r._grade    = gradeToNum(r.Rating_Clean || r.Rating);
   r._stars    = parseFloat(r['Avg Stars']) || 0;
   r._length   = parseFloat(r.Length) || 0;
@@ -624,6 +776,20 @@ function gradeToNum(g) {
   if (!g || g === '-1' || g === 'null') return -1;
   g = g.trim();
   var m;
+
+  // 1. AID: A0-A5 or C0-C5 -> Starts at 300
+  if ((m = g.match(/\b[AC]\s*(\d+)/i))) return 300 + parseInt(m[1]);
+
+  // 2. ICE & MIXED: WI, AI, M -> Starts at 200
+  // Matches WI5, AI4, M6, Mixed 6
+  if ((m = g.match(/[WA]I\s*(\d+)/i))) return 200 + parseInt(m[1]);
+  if ((m = g.match(/\bM\s*(\d+)/i)))   return 200 + parseInt(m[1]);
+
+  // 3. BOULDER: V-Scale -> Starts at 100
+  if ((m = g.match(/^V(\d+)/i))) return 100 + parseInt(m[1]);
+
+  // 4. YDS ROPE: 5.10 -> 10 (Standard Rock)
+  // We strictly look for "5." to avoid capturing "WI5" here
   if ((m = g.match(/5\.(\d+)([a-dA-D]?[+\-]?)/))) {
     var n = parseInt(m[1]), s = m[2].toLowerCase();
     if (s.indexOf('b') >= 0) n += 0.25;
@@ -633,15 +799,13 @@ function gradeToNum(g) {
     else if (s.indexOf('-') >= 0) n -= 0.1;
     return n;
   }
-  if ((m = g.match(/^V(\d+)/i))) return 100 + parseInt(m[1]);
-  if ((m = g.match(/[WAB]I(\d+)/i))) return parseInt(m[1]);
-  if ((m = g.match(/\bM(\d+)/i))) return parseInt(m[1]);
+
+  // 5. SNOW / SCRAMBLE (Low numbers)
   if (/easy.?snow/i.test(g)) return 1;
   if (/mod.?snow/i.test(g))  return 3;
   if (/steep.?snow/i.test(g)) return 5;
   if ((m = g.match(/class\s*([1-5])/i))) return parseInt(m[1]);
-  if (/^3rd/i.test(g)) return 3;
-  if (/^4th/i.test(g)) return 4;
+  
   return -1;
 }
 
@@ -674,10 +838,42 @@ var SCHEMES = {
 };
 
 function getColor(value, sorted, mode) {
-  if (value == null || value < 0 || !sorted.length) return '#475569';
-  var lo = 0, hi = sorted.length - 1;
-  while (lo < hi) { var mid = (lo + hi) >> 1; if (sorted[mid] < value) lo = mid + 1; else hi = mid; }
-  var norm = lo / (sorted.length - 1 || 1);
+  if (value == null || value < 0) return '#475569';
+  var norm = 0;
+
+  if (mode === 'rating') {
+     // --- AID (300+) ---
+     if (value >= 300) {
+        // A0 (Green) to A5 (Red)
+        norm = (value - 300) / (305 - 300);
+     }
+     // --- ICE & MIXED (200+) ---
+     else if (value >= 200) {
+        // WI2 (Green) to WI7 (Red)
+        // WI5 (205) will be ~0.6 (Orange/Red)
+        norm = (value - 202) / (207 - 202);
+     }
+     // --- BOULDER (100+) ---
+     else if (value >= 100) {
+        // V0 (Green) to V10 (Red)
+        norm = (value - 100) / (110 - 100);
+     } 
+     // --- YDS ROCK ---
+     else {
+        // 5.6 (Green) to 5.13 (Red)
+        norm = (value - 6) / (13 - 6);
+     }
+     
+     if (norm < 0) norm = 0;
+     if (norm > 1) norm = 1;
+  } 
+  else {
+      if (!sorted.length) return '#475569';
+      var lo = 0, hi = sorted.length - 1;
+      while (lo < hi) { var mid = (lo + hi) >> 1; if (sorted[mid] < value) lo = mid + 1; else hi = mid; }
+      norm = lo / (sorted.length - 1 || 1);
+  }
+
   var cs = SCHEMES[mode] || SCHEMES.rating;
   return norm <= 0.5 ? lerpHex(cs[0], cs[1], norm * 2) : lerpHex(cs[1], cs[2], (norm - 0.5) * 2);
 }
@@ -792,8 +988,11 @@ function calcGradeDistribution(routes) {
 }
 
 function makeAgg(routes, name, lat, lon) {
-  var id     = 'c' + (++clusterSeq);
-  var grades = routes.map(function(r){ return r._grade; }).filter(function(n){ return n > -1 && n < 100; });
+  var id = 'c' + (++clusterSeq);
+  
+  // FIX: Allow all grades > -1 (Includes V-scale, Ice, Aid)
+  var grades = routes.map(function(r){ return r._grade; }).filter(function(n){ return n > -1; });
+  
   clusterStore[id] = routes;
   return {
     _isAgg: true, _cid: id, _name: name,
@@ -810,12 +1009,20 @@ function groupKey(r, level) {
   var eff = getEffField(r, level);
   if (!eff || !eff.trim()) return null;
   
-  // FIX: If aggregating by State, the key must simply be the State
+  // 1. State: Key is just the State name
   if (level === 'State') {
       return (r._effState || r.State || '?').trim();
   }
   
-  // For other levels, prefix with State to ensure uniqueness (e.g. preventing 'Highline' in UT merging with 'Highline' in CA)
+  // 2. Wall (Location_Short): Key is Full Location + Short Name
+  // This ensures "Main Wall" in Yosemite is distinct from "Main Wall" in Joshua Tree
+  if (level === 'Location_Short') {
+      // We use the full 'Location' string as the unique prefix
+      return (r.Location || 'Unknown') + '|' + eff.trim();
+  }
+  
+  // 3. Subregions: Key is State + Subregion Name
+  // This prevents 'Highline' in UT merging with 'Highline' in CA
   return (r._effState || r.State || '?') + '|' + eff.trim();
 }
 
@@ -1045,6 +1252,8 @@ self.onmessage = function(e) {
     var scale  = data.scale;
     var meth   = data.scaleMethod;
     var radius = data.radius;
+    var cMin   = data.clusterMin; // NEW
+    var cMax   = data.clusterMax; // NEW
     
     var gradeCounts = calcGradeDistribution(filteredRoutes);
 
@@ -1054,8 +1263,27 @@ self.onmessage = function(e) {
       result = { type: 'FILTER_RESULT', mode: 'route', features: built.features, sortedV: built.sortedV, filteredCount: filteredRoutes.length, totalCount: allRoutes.length, gradeCounts: gradeCounts };
     } else {
       var display = agg === 'proximity' ? aggregateByProximity(filteredRoutes, radius) : aggregateByField(filteredRoutes, agg);
+      
+      // ADD THIS: Filter aggregated clusters by min/max count
+      var visibleRouteCount = filteredRoutes.length;
+      if (!isNaN(cMin) || !isNaN(cMax)) {
+         var minCnt = isNaN(cMin) ? 0 : cMin;
+         var maxCnt = isNaN(cMax) ? Infinity : cMax;
+         var newDisplay = [];
+         visibleRouteCount = 0; // Recalculate true visible route count
+         
+         for (var i = 0; i < display.length; i++) {
+             if (display[i]._count >= minCnt && display[i]._count <= maxCnt) {
+                 newDisplay.push(display[i]);
+                 visibleRouteCount += display[i]._count;
+             }
+         }
+         display = newDisplay;
+      }
+
       var built2  = buildAggFeatures(display, viz, scale, meth);
-      result = { type: 'FILTER_RESULT', mode: 'agg', features: built2.features, sortedV: built2.sortedV, filteredCount: filteredRoutes.length, totalCount: allRoutes.length, gradeCounts: gradeCounts };
+      // UPDATE filteredCount below to use 'visibleRouteCount' instead of 'filteredRoutes.length'
+      result = { type: 'FILTER_RESULT', mode: 'agg', features: built2.features, sortedV: built2.sortedV, filteredCount: visibleRouteCount, totalCount: allRoutes.length, gradeCounts: gradeCounts };
     }
     self.postMessage(result);
     return;
@@ -1244,19 +1472,23 @@ function applyMapResult(data) {
   const mode = document.getElementById('vizMode').value;
   const T = {rating:'Grade', length:'Length (ft)', pitches:'Pitches', stars:'Stars'};
   document.getElementById('legendTitle').textContent = T[mode] || 'Color Scale';
+  
   if (data.sortedV && data.sortedV.length) {
-      const mn = data.sortedV[0], mx = data.sortedV[data.sortedV.length-1];
       const cs = SCHEMES[mode] || SCHEMES.rating;
       document.getElementById('legendGrad').style.background = `linear-gradient(to right,${cs[0]},${cs[1]},${cs[2]})`;
+      
       const fmt = v => mode==='rating' ? (v>=100 ? `V${v-100}` : `5.${Math.round(v)}`) : Math.round(v);
-      document.getElementById('legendMin').textContent = fmt(mn);
-      document.getElementById('legendMax').textContent = fmt(mx);
-  }
-
-  if (data.features.length > 0) {
-    const b = new mapboxgl.LngLatBounds();
-    data.features.forEach(f => b.extend(f.geometry.coordinates));
-    map.fitBounds(b, {padding: isRoute ? 40 : 70, maxZoom: 13, duration: 500});
+      
+      // FIX: Hardcode legend labels for Rating mode so they match the new absolute map colors
+      if (mode === 'rating') {
+          document.getElementById('legendMin').textContent = '5.6 / V0';
+          document.getElementById('legendMax').textContent = '5.13+ / V12';
+      } else {
+          // Keep dynamic legend for other metrics
+          const mn = data.sortedV[0], mx = data.sortedV[data.sortedV.length-1];
+          document.getElementById('legendMin').textContent = fmt(mn);
+          document.getElementById('legendMax').textContent = fmt(mx);
+      }
   }
 }
 
@@ -1496,6 +1728,8 @@ function readURLState() {
             if(p.notTypes) p.notTypes.forEach(tid => { const found = ROUTE_TYPES.find(t=>t.id.toLowerCase()===tid); if(found) typeState[found.id] = 'not'; });
             syncTypeUI();
         }
+        if(state.clusterMin !== undefined && !isNaN(state.clusterMin)) document.getElementById('clusterMin').value = state.clusterMin;
+        if(state.clusterMax !== undefined && !isNaN(state.clusterMax)) document.getElementById('clusterMax').value = state.clusterMax;
     } catch(e) { console.error("URL state parsing failed", e); }
 }
 
@@ -1519,6 +1753,8 @@ function sendFilter() {
   const mustTypes  = ROUTE_TYPES.filter(t => typeState[t.id]==='must').map(t => t.id.toLowerCase());
   const canTypes   = ROUTE_TYPES.filter(t => typeState[t.id]==='can').map(t => t.id.toLowerCase());
   const notTypes   = ROUTE_TYPES.filter(t => typeState[t.id]==='not').map(t => t.id.toLowerCase());
+  const cMin = parseInt(document.getElementById('clusterMin').value);
+  const cMax = parseInt(document.getElementById('clusterMax').value);
 
   const payload = {
     params: { selStates, rMinRaw, rMaxRaw, sMin, sMax, lMin, lMax, pMin, pMax, mustTypes, canTypes, notTypes },
@@ -1526,7 +1762,9 @@ function sendFilter() {
     radius:      parseFloat(document.getElementById('proximityRadius').value) || 50,
     vizMode:     document.getElementById('vizMode').value,
     scale:       document.getElementById('scaleDots').checked,
-    scaleMethod: document.getElementById('scaleMethod').value
+    scaleMethod: document.getElementById('scaleMethod').value,
+    clusterMin:  cMin,
+    clusterMax:  cMax
   };
 
   const fullState = {
@@ -1537,9 +1775,8 @@ function sendFilter() {
 
   worker.postMessage({ type: 'FILTER', ...payload });
 }
-
 function resetFilters() {
-  ['ratingMin','ratingMax','starsMin','starsMax','lengthMin','lengthMax','pitchesMin','pitchesMax'].forEach(id => document.getElementById(id).value = '');
+  ['ratingMin','ratingMax','starsMin','starsMax','lengthMin','lengthMax','pitchesMin','pitchesMax', 'clusterMin', 'clusterMax'].forEach(id => document.getElementById(id).value = '');
   const sel = document.getElementById('stateFilter');
   for (let i = 0; i < sel.options.length; i++) sel.options[i].selected = false;
   ROUTE_TYPES.forEach(t => typeState[t.id] = 'can'); syncTypeUI(); // Updated to 'can'
@@ -1553,7 +1790,13 @@ function resetFilters() {
 
 function gradeNumToLabel(n) {
   if (n < 0) return '—';
-  if (n >= 100) return 'V' + (n - 100);
+  // Translate 300s back to A-scale
+  if (n >= 300) return 'A' + (Math.round(n) - 300);
+  // Translate 200s back to WI-scale
+  if (n >= 200) return 'WI' + (Math.round(n) - 200);
+  // Translate 100s back to V-scale
+  if (n >= 100) return 'V' + (Math.round(n) - 100);
+  // Standard Rock
   return '5.' + Math.round(n);
 }
 
@@ -1723,14 +1966,18 @@ $('resetBtn').addEventListener('click', resetFilters);
 $('clearTypes').addEventListener('click', () => { ROUTE_TYPES.forEach(t => typeState[t.id]='can'); syncTypeUI(); scheduleFilter(); });
 $('clearStates').addEventListener('click', () => { const sel = document.getElementById('stateFilter'); for(let i=0;i<sel.options.length;i++) sel.options[i].selected=false; scheduleFilter(); });
 
-$('aggregationLevel').addEventListener('change', e => { $('radiusGroup').style.display = e.target.value==='proximity' ? 'block' : 'none'; scheduleFilter(); });
+$('aggregationLevel').addEventListener('change', e => { 
+    $('radiusGroup').style.display = e.target.value === 'proximity' ? 'block' : 'none'; 
+    $('clusterFilterGroup').style.display = e.target.value === 'route' ? 'none' : 'block'; // NEW
+    scheduleFilter(); 
+});
 $('proximityRadius').addEventListener('input',  scheduleFilter);
 $('scaleDots').addEventListener('change', e => { $('scaleMethodGroup').style.display = e.target.checked ? 'block' : 'none'; scheduleFilter(); });
 $('scaleMethod').addEventListener('change', scheduleFilter);
 $('stateFilter').addEventListener('change', scheduleFilter);
 $('vizMode').addEventListener('change', scheduleFilter);
 
-['ratingMin','ratingMax','starsMin','starsMax','lengthMin','lengthMax','pitchesMin','pitchesMax'].forEach(id => $(id).addEventListener('input', scheduleFilter));
+['ratingMin','ratingMax','starsMin','starsMax','lengthMin','lengthMax','pitchesMin','pitchesMax', 'clusterMin', 'clusterMax'].forEach(id => $(id).addEventListener('input', scheduleFilter));
 
 $('mapStyle').addEventListener('change', e => {
   map.setStyle(e.target.value);
@@ -1748,6 +1995,69 @@ buildTypeUI();
 initChart();
 initMap();
 fetchInitialData();
+
+/* ═══════════════════════════════════════
+   MOBILE SIDEBAR & PANEL INTERACTIONS
+═══════════════════════════════════════ */
+(function() {
+    const toggle   = document.getElementById('sidebarToggle');
+    const sidebar  = document.getElementById('sidebar');
+    const backdrop = document.getElementById('mobileBackdrop');
+
+    function isMobile() { return window.innerWidth <= 768; }
+
+    function openSidebar() {
+        sidebar.classList.add('mobile-open');
+        backdrop.classList.add('active');
+        toggle.classList.add('open');
+        // Make sure backdrop is above the sidebar z-index on close side
+        backdrop.style.zIndex = '95';
+    }
+
+    function closeSidebar() {
+        sidebar.classList.remove('mobile-open');
+        backdrop.classList.remove('active');
+        toggle.classList.remove('open');
+    }
+
+    toggle.addEventListener('click', () => {
+        if (sidebar.classList.contains('mobile-open')) {
+            closeSidebar();
+        } else {
+            openSidebar();
+        }
+    });
+
+    // Close sidebar when backdrop is tapped
+    backdrop.addEventListener('click', () => {
+        closeSidebar();
+    });
+
+    // Auto-close sidebar when a filter changes on mobile (so user can see map)
+    const autoCloseTargets = [
+        'aggregationLevel','mapStyle','stateFilter','vizMode','scaleDots','scaleMethod',
+        'ratingMin','ratingMax','starsMin','starsMax','lengthMin','lengthMax',
+        'pitchesMin','pitchesMax','clusterMin','clusterMax','resetBtn','clearStates','clearTypes'
+    ];
+    autoCloseTargets.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const evt = (el.tagName === 'BUTTON') ? 'click' : 'change';
+        el.addEventListener(evt, () => {
+            if (isMobile()) closeSidebar();
+        });
+    });
+
+    // Ensure sidebar starts hidden on mobile
+    function onResize() {
+        if (!isMobile()) {
+            sidebar.classList.remove('mobile-open');
+            backdrop.classList.remove('active');
+            toggle.classList.remove('open');
+        }
+    }
+    window.addEventListener('resize', onResize);
+})();
 </script>
 </body>
 </html>
